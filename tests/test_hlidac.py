@@ -365,6 +365,37 @@ class TestSite(unittest.TestCase):
             self.assertNotIn(bad, html_src)                               # web musí fungovat i na /repo/
 
 
+class TestConfig(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        d = Path(self.tmp.name)
+        self.saved = (hlidac.CONFIG_PATH, hlidac.ENC_CONFIG_PATH, dict(os.environ))
+        hlidac.CONFIG_PATH = d / "config.json"
+        hlidac.ENC_CONFIG_PATH = d / "config.enc.json"
+        hlidac.CONFIG_PATH.write_text(json.dumps({"plan": {"cil": "ukázka"}}), encoding="utf-8")
+        hlidac.ENC_CONFIG_PATH.write_text(json.dumps(hlidac.encrypt_status(
+            {"plan": {"cil": "osobní"}, "env": {"PUSHOVER_USER": "u123"}}, "kod-1")), encoding="utf-8")
+        for k in ("CONFIG_JSON", "DASH_TOKEN", "PUSHOVER_USER", "HLIDAC_CONFIG", "DASHBOARD_URL"):
+            os.environ.pop(k, None)
+
+    def tearDown(self):
+        hlidac.CONFIG_PATH, hlidac.ENC_CONFIG_PATH, env = self.saved
+        os.environ.clear()
+        os.environ.update(env)
+        self.tmp.cleanup()
+
+    def test_priority(self):
+        self.assertEqual(hlidac.load_config()["plan"]["cil"], "ukázka")          # bez kódu → ukázka
+        os.environ["DASH_TOKEN"] = "spatny"
+        self.assertEqual(hlidac.load_config()["plan"]["cil"], "ukázka")          # špatný kód → ukázka
+        os.environ["DASH_TOKEN"] = "kod-1"
+        os.environ["PUSHOVER_USER"] = ""                                          # prázdný secret z Actions
+        self.assertEqual(hlidac.load_config()["plan"]["cil"], "osobní")
+        self.assertEqual(os.environ["PUSHOVER_USER"], "u123")
+        os.environ["CONFIG_JSON"] = json.dumps({"plan": {"cil": "secret"}})
+        self.assertEqual(hlidac.load_config()["plan"]["cil"], "secret")          # secret má přednost
+
+
 class TestServer(unittest.TestCase):
     def test_token_and_paths(self):
         import threading

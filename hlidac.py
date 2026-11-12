@@ -140,10 +140,32 @@ def load_env_file():
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
+ENC_CONFIG_PATH = BASE / "config.enc.json"
+_config_source_logged = None
+
+
 def load_config() -> dict:
-    with open(CONFIG_PATH, encoding="utf-8") as f:
-        cfg = json.load(f)
-    if os.environ.get("DASHBOARD_URL"):          # adresa i s tokenem patří do .env, ne do configu
+    """Pořadí: proměnná CONFIG_JSON → config.enc.json (dešifrovaný DASH_TOKEN) → config.json."""
+    global _config_source_logged
+    cfg, source = None, ""
+    if os.environ.get("CONFIG_JSON", "").strip():
+        cfg, source = json.loads(os.environ["CONFIG_JSON"]), "proměnná CONFIG_JSON"
+    elif ENC_CONFIG_PATH.exists() and os.environ.get("DASH_TOKEN") and "HLIDAC_CONFIG" not in os.environ:
+        try:
+            cfg = decrypt_blob(json.loads(ENC_CONFIG_PATH.read_text(encoding="utf-8")), os.environ["DASH_TOKEN"])
+            source = "config.enc.json (šifrovaná osobní konfigurace)"
+        except Exception as e:
+            log(f"config.enc.json nejde dešifrovat ({type(e).__name__}) – používám {CONFIG_PATH.name}")
+    if cfg is None:
+        with open(CONFIG_PATH, encoding="utf-8") as f:
+            cfg, source = json.load(f), CONFIG_PATH.name
+    if source != _config_source_logged:
+        log("Konfigurace:", source)
+        _config_source_logged = source
+    for k, v in (cfg.get("env") or {}).items():   # přístupové údaje kanálů mohou být v šifrované konfiguraci
+        if v and not os.environ.get(k):            # prázdný secret v Actions nesmí přebít hodnotu z konfigurace
+            os.environ[k] = str(v)
+    if os.environ.get("DASHBOARD_URL"):          # adresa i s tokenem patří do .env/secretu, ne do configu
         cfg["dashboard_url"] = os.environ["DASHBOARD_URL"]
     return cfg
 
@@ -876,6 +898,14 @@ def encrypt_status(obj: dict, token: str) -> dict:
     return {"v": 1, "kdf": "PBKDF2-SHA256", "iter": ENC_ITER, "salt": b(salt), "iv": b(iv), "ct": b(ct)}
 
 
+def decrypt_blob(env: dict, token: str):
+    import base64
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    d = base64.b64decode
+    key = hashlib.pbkdf2_hmac("sha256", token.encode(), d(env["salt"]), env["iter"], dklen=32)
+    return json.loads(AESGCM(key).decrypt(d(env["iv"]), d(env["ct"]), None))
+
+
 def build_site(site_dir: Path, status: dict):
     """Zkopíruje web a přidá stav. S DASH_TOKEN jen šifrovaně – web na Pages je veřejný."""
     import shutil
@@ -927,11 +957,24 @@ def main():
     ap.add_argument("--test-notify", action="store_true", help="pošli zkušební upozornění")
     ap.add_argument("--demo", action="store_true", help="ukázková data do dashboardu (bez sítě)")
     ap.add_argument("--site", metavar="SLOŽKA", help="po průchodu sestav statický web (GitHub Pages); implikuje --once")
+    ap.add_argument("--encrypt-config", metavar="SOUBOR", help="zašifruj osobní konfiguraci do config.enc.json (klíč = DASH_TOKEN)")
+    ap.add_argument("--decrypt-config", action="store_true", help="vypiš dešifrovanou config.enc.json (pro úpravy)")
     args = ap.parse_args()
     if args.site:
         args.once = True
 
     load_env_file()
+    if args.encrypt_config or args.decrypt_config:
+        token = os.environ.get("DASH_TOKEN")
+        if not token:
+            sys.exit("Nastav DASH_TOKEN (v .env nebo proměnné prostředí).")
+        if args.decrypt_config:
+            print(json.dumps(decrypt_blob(json.loads(ENC_CONFIG_PATH.read_text(encoding="utf-8")), token), ensure_ascii=False, indent=2))
+        else:
+            cfg = json.loads(Path(args.encrypt_config).read_text(encoding="utf-8"))
+            atomic_write(ENC_CONFIG_PATH, encrypt_status(cfg, token))
+            print(f"Zašifrováno do {ENC_CONFIG_PATH.name} – můžeš ho nahrát do repa, bez DASH_TOKEN je nečitelný.")
+        return
     cfg = load_config()
     DATA.mkdir(parents=True, exist_ok=True)
 

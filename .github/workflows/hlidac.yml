@@ -41,21 +41,11 @@ jobs:
           key: hlidac-stav-${{ github.run_id }}
           restore-keys: hlidac-stav-
 
-      - name: Osobní konfigurace ze secretu
-        env:
-          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
-        run: |
-          if [ -n "$CONFIG_JSON" ]; then
-            printf '%s' "$CONFIG_JSON" > config.json
-            python -c "import json; json.load(open('config.json'))" && echo "Použita osobní konfigurace."
-          else
-            echo "::warning::Secret CONFIG_JSON chybí – běží ukázková konfigurace z repa."
-          fi
-
       - name: Průchod hlídače a sestavení webu
         env:
           HLIDAC_DATA: data
           DASH_TOKEN: ${{ secrets.DASH_TOKEN }}
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
           PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
@@ -68,6 +58,10 @@ jobs:
           if [ -z "$DASH_TOKEN" ]; then
             echo "::error::Chybí secret DASH_TOKEN – bez něj by byl stav na webu veřejně čitelný."
             exit 1
+          fi
+          if [ -z "$DASHBOARD_URL" ]; then   # výchozí adresa webu na GitHub Pages i s kódem
+            owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
+            export DASHBOARD_URL="https://${owner}.github.io/${GITHUB_REPOSITORY#*/}/?k=${DASH_TOKEN}"
           fi
           python hlidac.py --site _site
 

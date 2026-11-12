@@ -23,17 +23,21 @@ Celkový stav se počítá z domova, práce a Evropy. Útočiště se ukazuje zv
 
 ### A) GitHub
 
-1. **Secrets** (Settings → Secrets and variables → Actions → New repository secret):
-   - `DASH_TOKEN` – kód k webu, dlouhý náhodný řetězec (`python3 -c "import secrets; print(secrets.token_urlsafe(24))"`). Bez něj se web nesestaví.
-   - `CONFIG_JSON` – celý obsah tvého upraveného `config.json` (místa, trasa). Tím zůstanou osobní údaje mimo veřejný kód.
-   - `DASHBOARD_URL` – `https://<uživatel>.github.io/krizovy-hlidac/?k=<DASH_TOKEN>`. Otevře se po klepnutí na upozornění.
-   - Upozornění: `PUSHOVER_TOKEN` + `PUSHOVER_USER`, nebo `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID`, nebo `NTFY_TOPIC`.
-   - Volitelně `HEALTHCHECK_URL`.
-2. **Pages:** Settings → Pages → Source: *GitHub Actions*.
-3. **Spuštění:** Actions → Krizový hlídač → *Run workflow*. Pak už běží samo.
-4. Otevři `DASHBOARD_URL` v Safari → Sdílet → **Přidat na plochu**. Pokud aplikace na ploše chce kód, vlož ho jednou a zapamatuje si ho.
+1. **Pages:** Settings → Pages → Source: *GitHub Actions*.
+2. **Secret** (Settings → Secrets and variables → Actions → New repository secret): `DASH_TOKEN` – kód k webu, dlouhý náhodný řetězec (`python3 -c "import secrets; print(secrets.token_urlsafe(24))"`). Bez něj se web nesestaví.
+3. **Spuštění:** Actions → Krizový hlídač → *Run workflow*. Pak už běží samo každých 10 minut.
+4. Otevři `https://<uživatel>.github.io/krizovy-hlidac/?k=<DASH_TOKEN>` v Safari → Sdílet → **Přidat na plochu**. Pokud aplikace na ploše chce kód, vlož ho jednou a zapamatuje si ho.
 
-Úpravy konfigurace dělej v secretu `CONFIG_JSON` (projeví se při dalším běhu). `config.json` v repu je jen ukázka.
+**Osobní konfigurace** (místa, trasa) nemusí být ve veřejném `config.json`, ten je jen ukázka. Hlídač ji hledá v tomto pořadí:
+- secret `CONFIG_JSON` – celý obsah konfigurace,
+- `config.enc.json` v repu – konfigurace zašifrovaná kódem `DASH_TOKEN`, bez něj nečitelná:
+  ```bash
+  DASH_TOKEN=… python3 hlidac.py --encrypt-config muj-config.json   # vytvoří config.enc.json
+  DASH_TOKEN=… python3 hlidac.py --decrypt-config > muj-config.json # pro další úpravy
+  ```
+- `config.json`.
+
+**Upozornění:** secrets `PUSHOVER_TOKEN` + `PUSHOVER_USER`, nebo `TELEGRAM_TOKEN` + `TELEGRAM_CHAT_ID`, nebo `NTFY_TOPIC`. Můžou být i v šifrované konfiguraci v sekci `"env": {"PUSHOVER_TOKEN": "…", "PUSHOVER_USER": "…"}`. Volitelně `HEALTHCHECK_URL` a `DASHBOARD_URL` (jinak se použije adresa na GitHub Pages i s kódem).
 
 ### B) Vlastní server
 
