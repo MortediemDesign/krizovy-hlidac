@@ -1898,6 +1898,9 @@ def main():
                 ok = sum(1 for s in st["sources"] if s["ok"])
                 print(f"::notice title=Zdroje {ok}/{len(st['sources'])}::" + ", ".join(
                     f"{s['key']} {'OK' if s['ok'] else 'CHYBA'}" for s in st["sources"]), flush=True)
+                public = ("noaa", "gas", "ioda", "gdelt", "nukib", "psp", "easa")   # info bez míst a tras
+                print("::notice title=Signály::" + " · ".join(
+                    f"{s['key']}: {s['info']}" for s in st["sources"] if s["key"] in public and s["ok"]), flush=True)
                 for s in st["sources"]:
                     bad = {k: f["error"] for k, f in (s.get("feeds") or {}).items() if not f["ok"]}
                     if not s["ok"] or bad:
