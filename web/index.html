@@ -184,6 +184,14 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     <p class="attr">Data: ČHMÚ, SPA = stupeň povodňové aktivity.</p>
   </section>
 
+  <section aria-labelledby="h-rad" id="s-rad" hidden>
+    <h2 id="h-rad">Radiace</h2>
+    <ul class="rivers" id="radiation"></ul>
+    <p class="attr">Data: BfS, německá síť asi 1 700 sond. Běžné pozadí je 0,05–0,2 µSv/h, déšť ho krátce zvedne.
+      Česká síť: <a href="https://sujb.gov.cz/aplikace/monras/" target="_blank" rel="noopener">SÚJB MonRaS</a>,
+      Rakousko: <a href="https://mb.strahlenschutz.gv.at/" target="_blank" rel="noopener">mapa</a>.</p>
+  </section>
+
   <section aria-labelledby="h-ev">
     <h2 id="h-ev">Co se děje</h2>
     <ul class="events" id="events"></ul>
@@ -357,6 +365,21 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
         el("span", {class:"r-name", text:r.name}),
         el("span", {class:"rv-val", text:`${r.value} ${r.unit}`}),
         el("span", {class:"rv-info", text: info.join(", ") + (r.time ? `, ${fmtTime(r.time)}` : "")}));
+    }));
+
+    // radiace
+    const rad = s.radiation || {};
+    const radRows = (rad.zones || []).concat(rad.national && rad.national.n ? [rad.national] : []).filter(z => z.n);
+    $("s-rad").hidden = !radRows.length;
+    const uSv = x => `${Number(x).toFixed(2).replace(".", ",")} µSv/h`;
+    $("radiation").replaceChildren(...radRows.map(z => {
+      const info = [`medián ${uSv(z.median)}`, `${z.n} sond`, `nejvyšší ${z.max_name}`];
+      if (z.rising) info.push(`${z.rising} nad svým normálem`);
+      return el("li", null,
+        el("span", {class:"lamp", "data-level": z.level || 0, "aria-hidden":"true"}),
+        el("span", {class:"r-name", text: z.name}),
+        el("span", {class:"rv-val", text: `max ${uSv(z.max)}`}),
+        el("span", {class:"rv-info", text: info.join(", ") + (rad.time ? `, ${fmtTime(rad.time)}` : "")}));
     }));
 
     // plán

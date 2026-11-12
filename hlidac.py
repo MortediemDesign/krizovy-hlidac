@@ -106,7 +106,15 @@ def parse_date(s: str | None) -> datetime | None:
         d = datetime.fromisoformat(s.replace("Z", "+00:00"))
         return (d if d.tzinfo else d.replace(tzinfo=timezone.utc)).astimezone(timezone.utc)
     except Exception:
-        return None
+        pass
+    m = re.match(r"^(\d{2})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$", s)   # MAAE: „26-11-10 09:00“ (vídeňský čas)
+    if m:
+        y, mo, d_, h, mi = map(int, m.groups())
+        try:
+            return datetime(2000 + y, mo, d_, h, mi, tzinfo=timezone(timedelta(hours=1))).astimezone(timezone.utc)
+        except ValueError:
+            return None
+    return None
 
 
 def norm(s: str) -> str:
@@ -388,39 +396,87 @@ def src_us_state(cfg, fetch):
     return events, ", ".join(found) or "sledované země nenalezeny"
 
 
-def src_bfs(cfg, fetch):
+RADIATION_ADVICE = ("Při úniku radiace se nejdřív ukryj uvnitř (zavři okna, vypni větrání) a řiď se pokyny HZS. "
+                    "Jód ber jen na pokyn úřadů. Odjížděj jen na pokyn nebo napříč směrem větru, ne skrz mrak.")
+
+
+def src_bfs(cfg, fetch, mem):
+    """Radiace z německé sítě BfS (~1 700 sond): zóny u hranic, celé Německo a nárůst proti normálu stanice."""
     c = cfg["bfs_radiation"]
     url = ("https://www.imis.bfs.de/ogc/opendata/ows?service=WFS&version=1.1.0&request=GetFeature"
            "&typeName=opendata:odlinfo_odl_1h_latest&outputFormat=application/json")
     data = json.loads(fetch(url))
-    lon1, lat1, lon2, lat2 = c["bbox_lon_lat"]
-    near, allv = [], []
+    zones = c.get("zones") or [{"name": "Hranice", "bbox_lon_lat": c["bbox_lon_lat"], "region": "CZ"}]
+
+    def in_zone(z, lon, lat):
+        lon1, lat1, lon2, lat2 = z["bbox_lon_lat"]
+        return lon is not None and lat is not None and lon1 <= lon <= lon2 and lat1 <= lat <= lat2
+
+    base = mem.setdefault("baseline", {})
+    stations, latest = [], None
     for f in data.get("features", []):
         p = f.get("properties") or {}
-        coords = (f.get("geometry") or {}).get("coordinates") or [None, None]
+        lon, lat = ((f.get("geometry") or {}).get("coordinates") or [None, None])[:2]
         v = p.get("value")
         if p.get("site_status", 1) != 1 or not isinstance(v, (int, float)):
             continue
-        allv.append(v)
-        if coords[0] is not None and lon1 <= coords[0] <= lon2 and lat1 <= coords[1] <= lat2:
-            near.append((v, p.get("name", "?")))
-    near.sort(reverse=True)
-    events = []
-    alarm = [x for x in near if x[0] >= c["alarm_usvh"]]
-    warn = [x for x in near if x[0] >= c["warn_usvh"]]
-    top = ", ".join(f"{n} {v:.2f}" for v, n in near[:3])
-    if len(alarm) >= c["min_stations"]:
-        events.append(make_event("BfS radiace", "CZ", 3, f"Vysoká radiace u hranic: {len(alarm)} stanic ≥ {c['alarm_usvh']} µSv/h ({top})",
-                                 url="https://odlinfo.bfs.de/", eid="bfs:near:alarm"))
-    elif len(warn) >= c["min_stations"]:
-        events.append(make_event("BfS radiace", "CZ", 2, f"Zvýšená radiace u hranic: {len(warn)} stanic ≥ {c['warn_usvh']} µSv/h ({top})",
-                                 url="https://odlinfo.bfs.de/", eid="bfs:near:warn"))
-    nat_warn = sum(1 for v in allv if v >= c["warn_usvh"])
+        sid = str(p.get("kenn") or p.get("id") or f"{lon},{lat}")
+        name = p.get("name") or p.get("plz") or sid
+        zoned = any(in_zone(z, lon, lat) for z in zones)
+        b = base.get(sid) if zoned else None
+        if zoned:   # normál stanice: pomalý průměr, zvýšené hodnoty ho neovlivní
+            if b is None:
+                base[sid] = v
+            elif v < b * 1.3:
+                base[sid] = round(b * 0.95 + v * 0.05, 4)
+        stations.append({"id": sid, "v": v, "name": name, "lon": lon, "lat": lat, "base": b if b is not None else v})
+        end = parse_date(p.get("end_measure"))
+        if end and (latest is None or end > latest):
+            latest = end
+
+    def stats(group):
+        vals = sorted(st["v"] for st in group)
+        top = max(group, key=lambda st: st["v"])
+        return {"n": len(group), "median": round(vals[len(vals) // 2], 3), "max": round(top["v"], 3), "max_name": top["name"]}
+
+    warn, alarm, n_min = c["warn_usvh"], c["alarm_usvh"], c["min_stations"]
+    rise_f, rise_min, rise_n = c.get("rise_factor", 2.0), c.get("rise_min_usvh", 0.25), c.get("rise_min_stations", 5)
+    events, zone_out = [], []
+    for z in zones:
+        zs = [st for st in stations if in_zone(z, st["lon"], st["lat"])]
+        if not zs:
+            zone_out.append({"name": z["name"], "n": 0, "level": 0})
+            continue
+        ranked = sorted(zs, key=lambda st: -st["v"])
+        top3 = ", ".join(f"{st['name']} {st['v']:.2f}" for st in ranked[:3])
+        n_alarm = sum(1 for st in zs if st["v"] >= alarm)
+        n_warn = sum(1 for st in zs if st["v"] >= warn)
+        rising = [st for st in zs if st["v"] >= rise_min and st["v"] >= rise_f * st["base"]]
+        region, slug = z.get("region", "CZ"), short_hash(z["name"])
+        lvl, title = 0, ""
+        if n_alarm >= n_min:
+            lvl, title = 3, f"Vysoká radiace – {z['name']}: {n_alarm} stanic ≥ {alarm} µSv/h ({top3})"
+        elif n_warn >= n_min:
+            lvl, title = 2, f"Zvýšená radiace – {z['name']}: {n_warn} stanic ≥ {warn} µSv/h ({top3})"
+        elif len(rising) >= rise_n:
+            lvl, title = 1, (f"Neobvyklý nárůst radiace – {z['name']}: {len(rising)} stanic aspoň {rise_f:g}× nad svým normálem "
+                             f"({top3}). Často jde jen o silný déšť.")
+        if lvl:
+            ev = make_event("BfS radiace", region, lvl, title, url="https://odlinfo.bfs.de/", eid=f"bfs:{slug}:{lvl}",
+                            detail=RADIATION_ADVICE)
+            ev["advice"] = RADIATION_ADVICE
+            events.append(ev)
+        zone_out.append({"name": z["name"], **stats(zs), "rising": len(rising), "level": lvl})
+
+    nat_warn = sum(1 for st in stations if st["v"] >= warn)
     if nat_warn >= c["national_min_stations"]:
-        events.append(make_event("BfS radiace", "EU", 2, f"Zvýšená radiace v Německu: {nat_warn} stanic ≥ {c['warn_usvh']} µSv/h",
-                                 url="https://odlinfo.bfs.de/", eid="bfs:national:warn"))
-    mx = near[0][0] if near else 0
-    return events, f"max {mx:.2f} µSv/h u hranic ({len(near)} stanic), {len(allv)} v DE"
+        ev = make_event("BfS radiace", "EU", 2, f"Zvýšená radiace v Německu: {nat_warn} stanic ≥ {warn} µSv/h",
+                        url="https://odlinfo.bfs.de/", eid="bfs:national:warn", detail=RADIATION_ADVICE)
+        ev["advice"] = RADIATION_ADVICE
+        events.append(ev)
+    national = {"name": "Celé Německo", **stats(stations), "level": 2 if nat_warn >= c["national_min_stations"] else 0} if stations else {}
+    info = "; ".join(f"{z['name']}: max {z.get('max', 0):.2f} µSv/h ({z['n']} stanic)" for z in zone_out)
+    return events, f"{info}; v DE {len(stations)} stanic", {"zones": zone_out, "national": national, "time": iso(latest)}
 
 
 CHMI = "https://opendata.chmi.cz/hydrology/now"
@@ -643,6 +699,7 @@ def run_news(cfg, fetch, state, now):
     nc = cfg["news"]
     rules = compile_rules(cfg)
     hits = state.setdefault("news_hits", {})
+    seen = state.setdefault("news_seen", {})
     health = {}
     max_age = timedelta(hours=nc.get("max_age_hours", 24))
 
@@ -662,7 +719,7 @@ def run_news(cfg, fetch, state, now):
                         if r.get("feeds") and feed["id"] not in r["feeds"]:   # pravidlo jen pro určité kanály
                             continue
                         key = f"{r['id']}|{feed['id']}|{short_hash(norm(title))}"
-                        if key not in hits:
+                        if key not in hits and key not in seen:   # vypršelý titulek se znovu nepočítá
                             hits[key] = {"rule": r["id"], "feed": feed["id"], "feed_name": feed["name"],
                                          "title": title, "url": link, "seen": iso(now)}
             except Exception as e:
@@ -670,7 +727,9 @@ def run_news(cfg, fetch, state, now):
 
     hold = timedelta(hours=nc.get("hold_hours", 12))
     for k in [k for k, h in hits.items() if now - (parse_date(h["seen"]) or now) > hold]:
-        del hits[k]
+        seen[k] = hits.pop(k)["seen"]
+    for k in [k for k, t in seen.items() if now - (parse_date(t) or now) > timedelta(hours=72)]:
+        del seen[k]
 
     events = []
     for r in rules:
@@ -684,9 +743,11 @@ def run_news(cfg, fetch, state, now):
         detail = f"{len(feeds)} zdroj(e): {', '.join(feeds)}"
         if r.get("note"):
             detail += f". {r['note']}"
-        events.append(make_event("Zprávy", r["region"], lvl, f"{r['label']} ({tag}): {rh[0]['title']}",
-                                 url=rh[0]["url"], detail=detail, eid=f"news:{r['id']}:L{lvl}",
-                                 when=parse_date(rh[0]["seen"])))
+        ev = make_event("Zprávy", r["region"], lvl, f"{r['label']} ({tag}): {rh[0]['title']}",
+                        url=rh[0]["url"], detail=detail, eid=f"news:{r['id']}:L{lvl}", when=parse_date(rh[0]["seen"]))
+        if r.get("advice"):
+            ev["advice"] = r["advice"]
+        events.append(ev)
     return events, health
 
 
@@ -812,8 +873,14 @@ def compose_alert(cfg, new_events, overall, ctx=None):
     on, oe = LEVELS[overall]
     lines.append("")
     lines.append(f"Celkový stav doma: {oe} {on}")
+    advice = []
+    for e in new_events:
+        if e.get("advice") and e["advice"] not in advice:
+            advice.append(e["advice"])
     acts = (cfg.get("actions") or DEFAULT_ACTIONS).get(str(top), [])
-    if top >= 1 and acts:
+    if advice:
+        lines += [f"⚠️ {a}" for a in advice]
+    elif top >= 1 and acts:
         lines.append("Co teď: " + " ".join(acts[:3]))
     if top >= 2:
         lines += context_lines(ctx)
@@ -998,8 +1065,11 @@ def handle_notifications(cfg, state, events, overall, region_levels, now):
             top = [e for e in events if e["level"] >= 3 and e["region"] in HOME_REGIONS][:3]
             lines = [f"🔴 [{region_short(e['region'])}] {e['title']}" for e in top]
             lines += [""] + context_lines(ctx)
+            advice = next((e["advice"] for e in top if e.get("advice")), None)
             acts = (cfg.get("actions") or DEFAULT_ACTIONS).get("3", [])
-            if acts:
+            if advice:
+                lines.append(f"⚠️ {advice}")
+            elif acts:
                 lines.append("Co teď: " + " ".join(acts[:2]))
             notify(state, cfg, "🔴 Stále ODJEĎ", "\n".join(lines).strip(), 3, url_dash)
             state["last_l3"] = iso(now)
@@ -1066,6 +1136,7 @@ def build_status(cfg, state, events, region_levels, overall, now):
         "actions": cfg.get("actions") or DEFAULT_ACTIONS, "plan": {**cfg.get("plan", {}), "trasy": trasy},
         "recommended": rec, "route_time": route.get("time", ""),
         "rivers": (extras.get("chmi") or {}).get("rivers", []),
+        "radiation": extras.get("bfs") or {},
         "fuel": (extras.get("fuel") or {}).get("points", {}),
         "history": list(reversed(state.get("history", [])))[:20],
         "channels": channels_configured(),
@@ -1244,6 +1315,10 @@ def demo_status(cfg):
                                              "blocked": False}], "problem": False},
             "A4": {"closures": [], "jams": [], "problem": False}}},
         "fuel": {"points": {"Norimberk": {"time": iso(now), "open": 23, "total": 25, "diesel": 1.629, "baseline": 1.61}}},
+        "bfs": {"time": iso(now - timedelta(minutes=40)), "zones": [
+            {"name": "Hranice ČR – Sasko a Bavorsko", "n": 64, "median": 0.098, "max": 0.148, "max_name": "Erlbach", "rising": 0, "level": 0},
+            {"name": "Šumava – směr Temelín", "n": 21, "median": 0.112, "max": 0.161, "max_name": "Bayerisch Eisenstein", "rising": 0, "level": 0}],
+            "national": {"name": "Celé Německo", "n": 1688, "median": 0.081, "max": 0.192, "max_name": "Feldberg", "level": 0}},
     }
     rl = {r: max([e["level"] for e in events if e["region"] == r] or [0]) for r in region_order(cfg)}
     overall = max(rl[r] for r in HOME_REGIONS)

@@ -268,16 +268,35 @@
   },
   "bfs_radiation": {
     "enabled": true,
-    "bbox_lon_lat": [
-      11.5,
-      49.0,
-      14.6,
-      51.3
-    ],
     "warn_usvh": 0.6,
     "alarm_usvh": 2.0,
     "min_stations": 3,
-    "national_min_stations": 10
+    "national_min_stations": 10,
+    "zones": [
+      {
+        "name": "Hranice ČR – Sasko a Bavorsko",
+        "bbox_lon_lat": [
+          11.5,
+          49.6,
+          15.0,
+          51.3
+        ],
+        "region": "CZ"
+      },
+      {
+        "name": "Šumava – směr Temelín",
+        "bbox_lon_lat": [
+          12.6,
+          48.5,
+          13.9,
+          49.4
+        ],
+        "region": "CZ"
+      }
+    ],
+    "rise_factor": 2.0,
+    "rise_min_usvh": 0.25,
+    "rise_min_stations": 5
   },
   "news": {
     "enabled": true,
@@ -328,6 +347,11 @@
         "id": "rte",
         "name": "RTÉ",
         "url": "https://www.rte.ie/feeds/rss/?index=/news/"
+      },
+      {
+        "id": "iaea",
+        "name": "MAAE (IAEA)",
+        "url": "https://www.iaea.org/feeds/topnews"
       }
     ],
     "rules": [
@@ -384,7 +408,8 @@
         "single": 1,
         "confirmed": 2,
         "match": "(jadern|atomov|nuklear|nuclear|kernwaff|atomwaff|atombomb)[a-z]*.{0,40}(utok|uder|vybuch|explo|angriff|einsatz|strike|detonac|detonat|schlag)",
-        "exclude": "test|cvicen|ubung|exercise|zkousk|simul|hroz|droh|threat|rhetori|retori|varuj|warn|doktrin|doctrin|cvic|manev|manov"
+        "exclude": "test|cvicen|ubung|exercise|zkousk|simul|hroz|droh|threat|rhetori|retori|varuj|warn|doktrin|doctrin|cvic|manev|manov",
+        "advice": "Při úniku radiace se nejdřív ukryj uvnitř (zavři okna, vypni větrání) a řiď se pokyny HZS. Jód ber jen na pokyn úřadů. Odjížděj jen na pokyn nebo napříč směrem větru, ne skrz mrak."
       },
       {
         "id": "radiace",
@@ -393,7 +418,8 @@
         "single": 1,
         "confirmed": 2,
         "match": "(unik|leak|austritt|freisetz|released?)[a-z]*.{0,40}(radiac|radioakt|strahl|radiation)|(radiac|radioakt|strahl|radiation)[a-z]*.{0,40}(unik|leak|austritt|freigesetzt|released)|(zaporiz|zaporoz|saporisch)[a-z]*.{0,60}(havari|unfall|accident|meltdown|taveni|kernschmelze)",
-        "exclude": "cviceni|ubung|exercise|film|serial"
+        "exclude": "cviceni|ubung|exercise|film|serial",
+        "advice": "Při úniku radiace se nejdřív ukryj uvnitř (zavři okna, vypni větrání) a řiď se pokyny HZS. Jód ber jen na pokyn úřadů. Odjížděj jen na pokyn nebo napříč směrem větru, ne skrz mrak."
       },
       {
         "id": "blackout_cz",
@@ -481,6 +507,16 @@
         "confirmed": 2,
         "match": "(blackout|power outage|power cut|vypad[a-z]* proudu|stromausfall|state of emergency|nouzov[a-z]* stav)[^.]{0,40}(ireland|irsk|irland)|(ireland|irsk|irland)[a-z]*.{0,40}(blackout|power outage|power cut|vypad[a-z]* proudu|stromausfall|state of emergency|nouzov[a-z]* stav)",
         "exclude": "northern ireland|severni irsk|nordirland|anniversary|vyroci"
+      },
+      {
+        "id": "jaderne_cz",
+        "label": "Mimořádná událost v jaderné elektrárně v ČR",
+        "region": "CZ",
+        "single": 1,
+        "confirmed": 2,
+        "advice": "Při úniku radiace se nejdřív ukryj uvnitř (zavři okna, vypni větrání) a řiď se pokyny HZS. Jód ber jen na pokyn úřadů. Odjížděj jen na pokyn nebo napříč směrem větru, ne skrz mrak.",
+        "match": "(temelin|dukovan|jadern[a-z]* elektrarn)[^.]{0,60}(havari|unik|mimoradn|evakuac|radiac)|(havari|unik|mimoradn)[a-z]*[^.]{0,60}(temelin|dukovan)",
+        "exclude": "cviceni|ubung|exercise|test|cvic"
       }
     ]
   },

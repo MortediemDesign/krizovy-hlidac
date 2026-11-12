@@ -80,7 +80,7 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 - **`nina.areas`**: německé okresy podle kódu ARS (5 číslic okresu + 7 nul, seznam „Regionalschlüssel“ od Destatis).
 - **`meteoalarm.feeds`**: `area_regex` vybere kraj (malými písmeny bez diakritiky, např. `karlovarsk`, `praha`).
 - **`gdacs`, `auswaertiges_amt`, `us_state`**: sledované země a jejich oblast.
-- **`bfs_radiation`**: výřez mapy a prahy radiace. Běžné pozadí je 0,05–0,2 µSv/h, déšť ho krátce zvedne asi na 0,3.
+- **`bfs_radiation`**: radiace z německé sítě BfS. `zones` jsou výřezy mapy (např. hranice u domova, Šumava ve směru od Temelína) a k nim prahy: ≥ `min_stations` sond nad `warn_usvh` → 🟠, nad `alarm_usvh` → 🔴. Hlídač si u každé sondy pamatuje její normál a ≥ `rise_min_stations` sond aspoň `rise_factor`× nad normálem hlásí jako 🟡 (často jde o silný déšť). Běžné pozadí je 0,05–0,2 µSv/h. U radiace upozornění radí nejdřív se ukrýt, ne hned odjíždět. Česká síť SÚJB ani rakouská nemají otevřené rozhraní, dashboard na ně odkazuje.
 - **`chmi_hydro`**: vodočty ČHMÚ (ID stanice z `opendata.chmi.cz/hydrology/now/metadata/meta1.json`). Hranice SPA se načtou samy. `levels` převádí SPA na stupeň hlídače (výchozí 2. SPA → 🟡, 3. SPA → 🟠, extrémní povodeň → 🔴), hlídá se i předpověď na 48 h a rychlé stoupání hladiny.
 - **`news.rules`**: pravidla pro titulky. Regulární výrazy piš **malými písmeny bez diakritiky**. `single` = stupeň při 1 zdroji, `confirmed` = při ≥ 2 nezávislých zdrojích, `feeds` = jen pro vybrané kanály.
 - **`notify.repeat_level3_minutes`**: jak často opakovat upozornění, dokud trvá 🔴 (0 = vypnuto).
@@ -95,11 +95,11 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 | GDACS | povodně, zemětřesení a další katastrofy |
 | NOAA SWPC | geomagnetické bouře, které ohrožují rozvodné sítě |
 | Auswärtiges Amt, US State Dept | cestovní varování |
-| BfS ODL | měření radiace v Německu, výřez u českých hranic |
+| BfS ODL | radiace: zóny u českých hranic a na Šumavě, celé Německo, nárůst proti normálu sondy |
 | ČHMÚ (otevřená data) | vodočty, stupně povodňové aktivity a předpověď |
 | Autobahn GmbH | uzavírky a kolony na německých dálnicích tras |
 | Tankerkönig (CC BY 4.0) | otevřené pumpy a ceny nafty na trase (volitelné) |
-| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
+| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC, MAAE | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
 
 Nefunkční zdroj ukáže dashboard v části Zdroje. Když jich nefunguje většina, místo „Klid“ ukáže „Bez dat“.
 

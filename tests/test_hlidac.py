@@ -277,12 +277,32 @@ class TestSources(unittest.TestCase):
         self.assertIn("Germany L2", info)
 
     def test_bfs(self):
-        ev, _ = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": bfs([0.8, 0.7, 0.65, 0.1], [5.0] * 2)}))
+        ev, info, extra = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": bfs([0.8, 0.7, 0.65, 0.1], [5.0] * 2)}), {})
         self.assertEqual([(e["region"], e["level"]) for e in ev], [("CZ", 2)])
-        ev, _ = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": bfs([0.1, 0.12, 0.3, 0.09])}))
-        self.assertEqual(ev, [])                                 # běžný déšť / pozadí
-        ev, _ = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": bfs([2.5, 3.1, 2.2])}))
+        self.assertIn("ukryj", ev[0]["advice"])                       # u radiace nejdřív úkryt
+        self.assertIn("Hranice0 0.80", ev[0]["title"])                # název stanice z BfS
+        ev, *_ = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": bfs([0.1, 0.12, 0.3, 0.09])}), {})
+        self.assertEqual(ev, [])                                       # běžný déšť / pozadí
+        ev, *_ = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": bfs([2.5, 3.1, 2.2])}), {})
         self.assertEqual(ev[0]["level"], 3)
+
+    def test_bfs_rise_against_baseline(self):
+        mem = {}
+        normal = bfs([0.10] * 8)
+        for _ in range(5):
+            ev, *_ = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": normal}), mem)
+            self.assertEqual(ev, [])
+        ev, info, extra = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": bfs([0.27] * 6 + [0.10] * 2)}), mem)
+        self.assertEqual([e["level"] for e in ev], [1])                # 6 stanic 2,7× nad normálem
+        self.assertIn("déšť", ev[0]["title"])
+        zone = extra["zones"][0]
+        self.assertEqual((zone["n"], zone["rising"], zone["max"]), (8, 6, 0.27))
+        self.assertAlmostEqual(list(mem["baseline"].values())[0], 0.10, places=3)   # zvýšené hodnoty normál nezkreslí
+        self.assertEqual(extra["national"]["n"], 8)
+
+    def test_iaea_date(self):
+        d = hlidac.parse_date("26-11-10 09:00")
+        self.assertEqual(d.isoformat(), "2026-11-10T08:00:00+00:00")
 
 
 class TestNewSources(unittest.TestCase):
@@ -456,6 +476,28 @@ class TestCycle(unittest.TestCase):
         self.assertEqual(self.sent[-1][2], 3)
         hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW + timedelta(minutes=50))
         self.assertEqual(len(self.sent), n + 1)
+
+    def test_expired_news_not_readded(self):
+        routes = base_routes()
+        routes["dashboard/146120000000"] = b"[]"
+        routes["ct24"] = rss([("Vláda navrhla vyhlásit stav ohrožení státu", None)])
+        state = {}
+        st = hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW)
+        self.assertEqual(next(r for r in st["regions"] if r["code"] == "CZ")["level"], 2)
+        st = hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW + timedelta(hours=13))
+        self.assertEqual(next(r for r in st["regions"] if r["code"] == "CZ")["level"], 0)   # titulek pořád ve feedu, ale vypršel
+
+    def test_radiation_advice_in_alert(self):
+        routes = base_routes()
+        routes["dashboard/146120000000"] = b"[]"
+        state = {}
+        hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW)
+        routes["imis.bfs.de"] = bfs([0.9, 0.8, 0.7])
+        hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW + timedelta(minutes=10))
+        title, msg, lvl = self.sent[-1]
+        self.assertEqual(lvl, 2)
+        self.assertIn("nejdřív ukryj", msg)
+        self.assertNotIn("Plná nádrž", msg)
 
     def test_old_news_ignored(self):
         routes = base_routes()
