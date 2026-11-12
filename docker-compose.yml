@@ -1,0 +1,11 @@
+services:
+  hlidac:
+    build: .
+    container_name: krizovy-hlidac
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config.json:/app/config.json:ro   # úpravy configu se projeví do 10 minut bez restartu
+      - ./data:/data

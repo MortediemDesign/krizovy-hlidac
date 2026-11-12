@@ -1,0 +1,17 @@
+# systemd služba pro Raspberry Pi / VPS bez Dockeru.
+# sudo cp hlidac.service /etc/systemd/system/ && sudo systemctl enable --now hlidac
+[Unit]
+Description=Krizový hlídač
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/krizovy-hlidac
+ExecStart=/usr/bin/python3 /opt/krizovy-hlidac/hlidac.py
+Restart=always
+RestartSec=30
+User=hlidac
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

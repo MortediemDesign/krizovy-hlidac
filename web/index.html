@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Krizový hlídač</title>
+<meta name="theme-color" content="#13191C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Hlídač">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+@font-face{font-family:"Barlow";font-weight:400;font-display:swap;src:url(fonts/barlow-latin-400-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Barlow";font-weight:400;font-display:swap;src:url(fonts/barlow-latin-ext-400-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Barlow";font-weight:600;font-display:swap;src:url(fonts/barlow-latin-600-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Barlow";font-weight:600;font-display:swap;src:url(fonts/barlow-latin-ext-600-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:url(fonts/barlow-condensed-latin-600-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Barlow Condensed";font-weight:600;font-display:swap;src:url(fonts/barlow-condensed-latin-ext-600-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+@font-face{font-family:"Barlow Condensed";font-weight:700;font-display:swap;src:url(fonts/barlow-condensed-latin-700-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
+@font-face{font-family:"Barlow Condensed";font-weight:700;font-display:swap;src:url(fonts/barlow-condensed-latin-ext-700-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
+
+:root{
+  --paper:#EEF1EF; --ink:#172024; --muted:#56646A; --line:#C9D2D0; --raise:#E3E8E6;
+  --l0:#2E7D4F; --l1:#E8B51A; --l2:#E2621B; --l3:#B3261E;
+  --on0:#FFFFFF; --on1:#1D1A0C; --on2:#1A1007; --on3:#FFFFFF;
+  --cond:"Barlow Condensed","Arial Narrow",sans-serif;
+  --text:"Barlow",system-ui,sans-serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{--paper:#13191C; --ink:#E6ECEA; --muted:#95A2A6; --line:#2B353A; --raise:#1B2328;}
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.45 var(--text);}
+a{color:inherit;text-underline-offset:3px}
+a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible{outline:3px solid var(--l2);outline-offset:2px}
+.wrap{max-width:680px;margin:0 auto;padding:0 20px}
+
+/* výstražná tabule */
+.placard{--bg:var(--l0);--on:var(--on0);background:var(--bg);color:var(--on);
+  padding:calc(env(safe-area-inset-top) + 22px) 0 26px;transition:background-color .6s ease}
+.placard[data-level="1"]{--bg:var(--l1);--on:var(--on1)}
+.placard[data-level="2"]{--bg:var(--l2);--on:var(--on2)}
+.placard[data-level="3"]{--bg:var(--l3);--on:var(--on3)}
+.placard[data-level="x"]{--bg:#5B666B;--on:#FFFFFF}
+.placard .scale{display:flex;gap:6px;margin-bottom:18px}
+.placard .scale i{flex:1;height:6px;border-radius:3px;background:currentColor;opacity:.22}
+.placard .scale i.on{opacity:1}
+.level{font:700 clamp(4.4rem,21vw,8.4rem)/.84 var(--cond);letter-spacing:-.01em;margin:0}
+.reason{font-size:1.18rem;line-height:1.35;margin:14px 0 0;max-width:34ch}
+.meta{margin:16px 0 0;font-size:.92rem;opacity:.85}
+.stale{margin:16px 0 0;padding:10px 12px;border-radius:6px;background:rgba(0,0,0,.18);font-weight:600;font-size:.95rem}
+.placard[data-level="1"] .stale,.placard[data-level="2"] .stale{background:rgba(255,255,255,.35)}
+.unlock{margin:18px 0 0}
+.unlock label{display:block;font-weight:600;margin-bottom:6px}
+.unlock div{display:flex;gap:8px}
+.unlock input{flex:1;min-width:0;font:400 1rem var(--text);padding:11px 12px;border-radius:6px;border:0;background:#fff;color:#172024}
+.unlock button{font:600 1rem var(--text);padding:11px 16px;border-radius:6px;border:2px solid currentColor;background:transparent;color:inherit;cursor:pointer}
+@media (prefers-reduced-motion:no-preference){
+  .placard[data-level="3"] .level{animation:beat 1.6s ease-in-out infinite}
+  @keyframes beat{50%{opacity:.55}}
+}
+
+section{padding:26px 0 4px;border-bottom:1px solid var(--line)}
+section:last-of-type{border-bottom:0}
+h2{font:700 1.65rem/1.1 var(--cond);margin:0 0 12px}
+
+/* co udělat */
+.todo{list-style:none;margin:0;padding:0}
+.todo li{border-top:1px solid var(--line)}
+.todo li:first-child{border-top:0}
+.todo label{display:flex;gap:14px;align-items:flex-start;padding:11px 0;cursor:pointer}
+.todo input{appearance:none;flex:none;width:24px;height:24px;margin:1px 0 0;border:2px solid var(--muted);border-radius:5px;display:grid;place-content:center;background:transparent}
+.todo input:checked{background:var(--ink);border-color:var(--ink)}
+.todo input:checked::after{content:"";width:12px;height:7px;border:solid var(--paper);border-width:0 0 3px 3px;transform:rotate(-45deg) translate(1px,-1px)}
+.todo input:checked + span{color:var(--muted);text-decoration:line-through}
+.todo-reset{margin:6px 0 16px;background:none;border:0;padding:6px 0;color:var(--muted);font:inherit;font-size:.92rem;text-decoration:underline;cursor:pointer}
+
+/* oblasti */
+.regions{margin:0;padding:0;list-style:none}
+.regions li{display:grid;grid-template-columns:14px 1fr auto;column-gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.regions li:first-child{border-top:0}
+.lamp{width:14px;height:14px;border-radius:50%;margin-top:5px;background:var(--l0)}
+.lamp[data-level="1"]{background:var(--l1)} .lamp[data-level="2"]{background:var(--l2)} .lamp[data-level="3"]{background:var(--l3)}
+.r-name{font-weight:600}
+.r-level{font:700 1.15rem/1.3 var(--cond);text-align:right}
+.r-top{grid-column:2 / 4;color:var(--muted);font-size:.95rem;margin-top:2px}
+.refuge-head{margin:14px 0 0;padding-top:12px;border-top:2px solid var(--line);color:var(--muted);font-size:.95rem}
+
+/* události */
+.events{list-style:none;margin:0;padding:0}
+.events li{display:grid;grid-template-columns:14px 1fr;column-gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.events li:first-child{border-top:0}
+.ev-title{font-weight:600}
+.ev-meta{grid-column:2;color:var(--muted);font-size:.9rem;margin-top:3px}
+.ev-detail{grid-column:2;font-size:.95rem;margin-top:4px}
+.empty{color:var(--muted);margin:0 0 18px}
+
+/* trasa */
+.route{list-style:none;margin:4px 0 18px;padding:0;position:relative}
+.route li{position:relative;padding:0 0 14px 28px}
+.route li::before{content:"";position:absolute;left:5px;top:8px;width:12px;height:12px;border-radius:50%;border:3px solid var(--ink);background:var(--paper)}
+.route li::after{content:"";position:absolute;left:10.5px;top:22px;bottom:-6px;width:3px;background:var(--ink)}
+.route li:last-child::after{display:none}
+.route li:last-child::before{background:var(--ink)}
+.plan dt{color:var(--muted);font-size:.92rem;margin-top:12px}
+.plan dd{margin:2px 0 0}
+.plan{margin:0 0 18px}
+
+details{padding:16px 0;border-bottom:1px solid var(--line)}
+details:last-of-type{border-bottom:0}
+summary{font:700 1.35rem/1.2 var(--cond);cursor:pointer;list-style-position:outside}
+summary small{font:400 .95rem var(--text);color:var(--muted);margin-left:6px}
+.src{list-style:none;margin:10px 0 0;padding:0;font-size:.95rem}
+.src li{display:grid;grid-template-columns:14px 1fr;column-gap:10px;padding:7px 0}
+.src .lamp{width:10px;height:10px;margin-top:6px}
+.src .lamp.bad{background:var(--l3)}
+.src .info{grid-column:2;color:var(--muted);font-size:.88rem}
+.hist{list-style:none;margin:10px 0 0;padding:0}
+.hist li{padding:9px 0;border-top:1px solid var(--line);font-size:.95rem}
+.hist li:first-child{border-top:0}
+.hist time{display:block;color:var(--muted);font-size:.85rem}
+footer{padding:20px 0 calc(env(safe-area-inset-bottom) + 28px);color:var(--muted);font-size:.88rem;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+footer button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:8px 14px;font:600 .95rem var(--text);cursor:pointer}
+</style>
+</head>
+<body>
+<header class="placard" id="placard" data-level="0">
+  <div class="wrap">
+    <div class="scale" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <h1 class="level" id="level">Načítám</h1>
+    <p class="reason" id="reason">Zjišťuji aktuální stav.</p>
+    <p class="meta" id="meta"></p>
+    <p class="stale" id="stale" hidden></p>
+    <form class="unlock" id="unlock" hidden>
+      <label for="code">Kód pro odemčení</label>
+      <div><input id="code" name="code" autocomplete="off" autocapitalize="off" spellcheck="false" required><button type="submit">Odemknout</button></div>
+    </form>
+  </div>
+</header>
+
+<main class="wrap">
+  <section aria-labelledby="h-todo">
+    <h2 id="h-todo">Co udělat teď</h2>
+    <ul class="todo" id="todo"></ul>
+    <button class="todo-reset" id="todo-reset" type="button">Odškrtat vše znovu</button>
+  </section>
+
+  <section aria-labelledby="h-reg">
+    <h2 id="h-reg">Oblasti</h2>
+    <ul class="regions" id="regions"></ul>
+    <p class="refuge-head" id="refuge-head">Útočiště</p>
+    <ul class="regions" id="refuge"></ul>
+  </section>
+
+  <section aria-labelledby="h-ev">
+    <h2 id="h-ev">Co se děje</h2>
+    <ul class="events" id="events"></ul>
+  </section>
+
+  <section aria-labelledby="h-plan">
+    <h2 id="h-plan">Plán odjezdu</h2>
+    <div id="plan"></div>
+  </section>
+
+  <section>
+    <details id="d-hist"><summary>Poslední upozornění <small id="hist-count"></small></summary><ul class="hist" id="history"></ul></details>
+    <details id="d-src"><summary>Zdroje <small id="src-count"></small></summary><ul class="src" id="sources"></ul></details>
+  </section>
+</main>
+
+<footer class="wrap">
+  <span id="foot">Krizový hlídač</span>
+  <button type="button" id="refresh">Obnovit</button>
+</footer>
+
+<script>
+(() => {
+  const LEVEL_TEXT = ["Klid", "Sleduj", "Připrav se", "Odjeď"];
+  const $ = id => document.getElementById(id);
+  const qs = new URLSearchParams(location.search);
+  const store = {
+    get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
+    set(k,v){ try { localStorage.setItem(k,v); } catch(e){} },
+    del(k){ try { localStorage.removeItem(k); } catch(e){} }
+  };
+  if (qs.get("k")) store.set("hk", qs.get("k"));
+  let token = qs.get("k") || store.get("hk") || "";
+  let mode = store.get("mode");   // "plain" = vlastní server, "enc" = šifrovaný stav na GitHub Pages
+  let last = null;
+
+  function el(tag, attrs, ...kids){
+    const n = document.createElement(tag);
+    for (const [k,v] of Object.entries(attrs||{})) {
+      if (v == null) continue;
+      if (k === "text") n.textContent = v; else n.setAttribute(k, v);
+    }
+    for (const c of kids) if (c != null) n.append(c);
+    return n;
+  }
+  const safeUrl = u => /^https?:\/\//i.test(u||"") ? u : null;
+  const fmtTime = iso => {
+    const d = new Date(iso); if (isNaN(d)) return "";
+    const today = new Date().toDateString() === d.toDateString();
+    return d.toLocaleString("cs-CZ", today ? {hour:"2-digit",minute:"2-digit"} : {day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"});
+  };
+  const ago = iso => {
+    const m = Math.round((Date.now() - new Date(iso)) / 60000);
+    if (!isFinite(m)) return "";
+    if (m < 1) return "právě teď";
+    if (m < 60) return `před ${m} min`;
+    const h = Math.round(m/60);
+    return h < 48 ? `před ${h} h` : `před ${Math.round(h/24)} dny`;
+  };
+
+  function render(s){
+    last = s;
+    const o = s.overall.level;
+    $("placard").dataset.level = o;
+    document.querySelectorAll(".scale i").forEach((i,n) => i.classList.toggle("on", n <= o));
+    $("level").textContent = LEVEL_TEXT[o];
+    document.title = `${LEVEL_TEXT[o]} – Krizový hlídač`;
+    const home = s.events.filter(e => e.region !== "ES");
+    $("reason").textContent = o === 0
+      ? "Doma ani v okolí se neděje nic, kvůli čemu bys měl jednat."
+      : (home[0] ? home[0].title : "");
+    if (s.blind && o === 0) {
+      $("placard").dataset.level = "x";
+      $("level").textContent = "Bez dat";
+      $("reason").textContent = "Většina zdrojů teď neodpovídá, takže klid nejde potvrdit. Seznam je dole v části Zdroje.";
+    }
+    $("meta").textContent = `Aktualizováno ${fmtTime(s.generated)}, kontrola každých ${s.interval_minutes} min.`;
+
+    const ageMin = (Date.now() - new Date(s.generated)) / 60000;
+    const limit = s.stale_after_minutes || Math.max(30, 3 * (s.interval_minutes || 10));
+    $("stale").hidden = ageMin < limit;
+    $("stale").textContent = `Hlídač se naposledy ozval před ${Math.round(ageMin)} min. Řiď se rádiem, sirénami a výstrahami v telefonu.`;
+
+    // co udělat
+    const acts = (s.actions && s.actions[String(o)]) || [];
+    const todo = $("todo"); todo.replaceChildren();
+    acts.forEach(a => {
+      const key = `todo:${o}:${a}`;
+      const cb = el("input", {type:"checkbox"});
+      cb.checked = store.get(key) === "1";
+      cb.addEventListener("change", () => cb.checked ? store.set(key,"1") : store.del(key));
+      todo.append(el("li", null, el("label", null, cb, el("span", {text:a}))));
+    });
+    $("todo-reset").onclick = () => { acts.forEach(a => store.del(`todo:${o}:${a}`)); render(last); };
+
+    // oblasti
+    const row = r => {
+      const top = r.events[0];
+      return el("li", null,
+        el("span", {class:"lamp", "data-level":r.level, "aria-hidden":"true"}),
+        el("span", {class:"r-name", text:r.name}),
+        el("span", {class:"r-level", text:LEVEL_TEXT[r.level]}),
+        el("span", {class:"r-top", text: top ? top.title : "Bez varování"}));
+    };
+    $("regions").replaceChildren(...s.regions.filter(r => !r.refuge).map(row));
+    const refuge = s.regions.filter(r => r.refuge);
+    $("refuge-head").hidden = !refuge.length;
+    $("refuge").replaceChildren(...refuge.map(row));
+
+    // události
+    const evs = $("events"); evs.replaceChildren();
+    if (!s.events.length) evs.append(el("li", null, el("span"), el("p", {class:"empty", text:"Žádná aktivní varování. Hlídač dál sleduje všechny zdroje."})));
+    s.events.slice(0, 30).forEach(e => {
+      const url = safeUrl(e.url);
+      const title = url ? el("a", {href:url, target:"_blank", rel:"noopener", class:"ev-title", text:e.title})
+                        : el("span", {class:"ev-title", text:e.title});
+      const region = (s.regions.find(r => r.code === e.region) || {}).name || e.region;
+      evs.append(el("li", null,
+        el("span", {class:"lamp", "data-level":e.level, "aria-hidden":"true"}),
+        title,
+        el("span", {class:"ev-meta", text:`${LEVEL_TEXT[e.level]}, ${region}, ${e.source}, ${ago(e.time)}`}),
+        e.detail ? el("span", {class:"ev-detail", text:e.detail}) : null));
+    });
+
+    // plán
+    const p = s.plan || {};
+    const plan = $("plan"); plan.replaceChildren();
+    if (p.cil) plan.append(el("p", null, "Cíl: ", el("strong", {text:p.cil})));
+    if (p.trasa) {
+      plan.append(el("ol", {class:"route", "aria-label":"Hlavní trasa"},
+        ...p.trasa.split("→").map(x => x.trim()).filter(Boolean).map(x => el("li", {text:x}))));
+    }
+    const dl = el("dl", {class:"plan"});
+    [["Záložní trasa", p.zalozni_trasa], ["Sraz", p.sraz], ["Nezapomeň", p.poznamka]].forEach(([k,v]) => {
+      if (v) dl.append(el("dt", {text:k}), el("dd", {text:v}));
+    });
+    plan.append(dl);
+
+    // historie
+    const hist = s.history || [];
+    $("hist-count").textContent = hist.length ? `(${hist.length})` : "";
+    $("history").replaceChildren(...(hist.length ? hist.map(h => el("li", null,
+      el("time", {datetime:h.time, text:`${fmtTime(h.time)}${h.channels && h.channels.length ? ", " + h.channels.join(", ") : ", neodesláno"}`}),
+      el("strong", {text:h.title}), el("br"), el("span", {text:h.message.split("\n")[0]}))) :
+      [el("li", {text:"Zatím nic neodešlo."})]));
+
+    // zdroje
+    const ok = s.sources.filter(x => x.ok).length;
+    $("src-count").textContent = `${ok} z ${s.sources.length} funguje`;
+    if (ok < s.sources.length) $("d-src").open = true;
+    $("sources").replaceChildren(...s.sources.map(x => el("li", null,
+      el("span", {class: "lamp" + (x.ok ? "" : " bad"), "aria-hidden":"true"}),
+      el("span", {text: x.label + (x.ok ? "" : " – nefunguje")}),
+      el("span", {class:"info", text: x.ok ? x.info : x.error}))));
+
+    $("foot").textContent = s.channels && s.channels.length
+      ? `Upozornění chodí přes ${s.channels.join(", ")}.`
+      : "Upozornění zatím nejsou nastavená.";
+  }
+
+  // Šifrovaný stav (GitHub Pages): PBKDF2-SHA256 → AES-256-GCM, klíčem je kód z odkazu.
+  const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  async function decrypt(env, pass){
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey({name:"PBKDF2", salt:b64(env.salt), iterations:env.iter, hash:"SHA-256"},
+      base, {name:"AES-GCM", length:256}, false, ["decrypt"]);
+    const pt = await crypto.subtle.decrypt({name:"AES-GCM", iv:b64(env.iv)}, key, b64(env.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+  const tryFetch = async u => { try { return await fetch(u, {cache:"no-store"}); } catch(e) { return null; } };
+
+  async function fetchStatus(){
+    const bust = "t=" + Date.now();
+    const urls = {
+      plain: "status.json?" + bust + (token ? "&k=" + encodeURIComponent(token) : ""),
+      enc: "status.enc.json?" + bust,
+    };
+    for (const m of (mode === "enc" ? ["enc", "plain"] : ["plain", "enc"])) {
+      const r = await tryFetch(urls[m]);
+      if (!r) continue;
+      if (m === "plain" && r.status === 401) throw new Error("locked");
+      if (!r.ok) continue;
+      if (mode !== m) { mode = m; store.set("mode", m); }
+      if (m === "plain") return r.json();
+      const env = await r.json();
+      if (!token) throw new Error("locked");
+      try { return await decrypt(env, token); } catch(e) { throw new Error("badcode"); }
+    }
+    throw new Error("offline");
+  }
+
+  function showLocked(msg){
+    $("placard").dataset.level = "x";
+    document.querySelectorAll(".scale i").forEach(i => i.classList.remove("on"));
+    $("level").textContent = "Zamčeno";
+    $("reason").textContent = msg;
+    $("meta").textContent = "";
+    $("stale").hidden = true;
+    $("unlock").hidden = false;
+    document.querySelector("main").hidden = true;
+  }
+
+  async function load(){
+    try {
+      const s = await fetchStatus();
+      $("unlock").hidden = true;
+      document.querySelector("main").hidden = false;
+      render(s);
+    } catch (e) {
+      if (e.message === "locked") showLocked("Zadej kód, který máš v odkazu za znaky ?k=");
+      else if (e.message === "badcode") showLocked("Kód nesedí. Zkontroluj ho a zkus to znovu.");
+      else if (last) render(last);
+      else {
+        $("placard").dataset.level = "x";
+        $("level").textContent = "Bez spojení";
+        $("reason").textContent = "Hlídač teď neodpovídá a v telefonu není uložený žádný stav.";
+      }
+    }
+  }
+
+  $("unlock").addEventListener("submit", ev => {
+    ev.preventDefault();
+    const v = $("code").value.trim();
+    if (!v) return;
+    token = v;
+    store.set("hk", v);
+    load();
+  });
+  $("refresh").addEventListener("click", load);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+  setInterval(load, 60000);
+  load();
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+})();
+</script>
+</body>
+</html>

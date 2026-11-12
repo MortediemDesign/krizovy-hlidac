@@ -1,0 +1,285 @@
+{
+  "interval_minutes": 10,
+  "timezone": "Europe/Prague",
+  "dashboard_url": "",
+  "http": {
+    "bind": "0.0.0.0",
+    "port": 8080
+  },
+  "regions": {
+    "CZ": "Česko – domov",
+    "DE": "Německo – práce",
+    "EU": "Evropa / NATO",
+    "ES": "Útočiště – Španělsko"
+  },
+  "plan": {
+    "cil": "Doplň cíl, kam pojedeš",
+    "trasa": "Domov → Hraniční přechod → Tranzitní město → Cíl",
+    "zalozni_trasa": "Doplň záložní trasu jiným směrem",
+    "sraz": "Doplň, kde se rodina sejde, když nebudete spolu",
+    "poznamka": "Doklady, hotovost, léky a věci pro děti mít v jedné tašce u dveří."
+  },
+  "nina": {
+    "enabled": true,
+    "areas": [
+      {
+        "ars": "146120000000",
+        "name": "Dresden"
+      },
+      {
+        "ars": "095640000000",
+        "name": "Nürnberg"
+      }
+    ]
+  },
+  "nina_national": {
+    "enabled": true
+  },
+  "noaa": {
+    "enabled": true
+  },
+  "gdacs": {
+    "enabled": true,
+    "countries": {
+      "CZE": "CZ",
+      "DEU": "DE",
+      "ESP": "ES",
+      "POL": "EU",
+      "AUT": "EU",
+      "SVK": "EU",
+      "FRA": "EU"
+    }
+  },
+  "meteoalarm": {
+    "enabled": true,
+    "feeds": [
+      {
+        "url": "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-czechia",
+        "region": "CZ",
+        "area_regex": "praha"
+      },
+      {
+        "url": "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-spain",
+        "region": "ES",
+        "area_regex": ""
+      }
+    ]
+  },
+  "auswaertiges_amt": {
+    "enabled": true,
+    "countries": {
+      "CZ": "CZ",
+      "ES": "ES",
+      "PL": "EU",
+      "AT": "EU",
+      "SK": "EU"
+    }
+  },
+  "us_state": {
+    "enabled": true,
+    "countries": [
+      {
+        "region": "CZ",
+        "names": [
+          "Czechia",
+          "Czech Republic"
+        ]
+      },
+      {
+        "region": "DE",
+        "names": [
+          "Germany"
+        ]
+      },
+      {
+        "region": "ES",
+        "names": [
+          "Spain"
+        ]
+      },
+      {
+        "region": "EU",
+        "names": [
+          "Poland",
+          "Austria",
+          "Slovakia"
+        ]
+      }
+    ]
+  },
+  "bfs_radiation": {
+    "enabled": true,
+    "bbox_lon_lat": [
+      11.5,
+      49.0,
+      14.6,
+      51.3
+    ],
+    "warn_usvh": 0.6,
+    "alarm_usvh": 2.0,
+    "min_stations": 3,
+    "national_min_stations": 10
+  },
+  "news": {
+    "enabled": true,
+    "hold_hours": 12,
+    "max_age_hours": 24,
+    "feeds": [
+      {
+        "id": "ct24",
+        "name": "ČT24",
+        "url": "https://ct24.ceskatelevize.cz/rss"
+      },
+      {
+        "id": "irozhlas",
+        "name": "iROZHLAS",
+        "url": "https://www.irozhlas.cz/rss/irozhlas"
+      },
+      {
+        "id": "novinky",
+        "name": "Novinky",
+        "url": "https://www.novinky.cz/rss"
+      },
+      {
+        "id": "tagesschau",
+        "name": "Tagesschau",
+        "url": "https://www.tagesschau.de/index~rss2.xml"
+      },
+      {
+        "id": "mdr",
+        "name": "MDR",
+        "url": "https://www.mdr.de/nachrichten/index-rss.xml"
+      },
+      {
+        "id": "rtve",
+        "name": "RTVE",
+        "url": "https://www.rtve.es/api/noticias.rss"
+      },
+      {
+        "id": "bbc",
+        "name": "BBC World",
+        "url": "https://feeds.bbci.co.uk/news/world/rss.xml"
+      }
+    ],
+    "rules": [
+      {
+        "id": "stav_ohrozeni",
+        "label": "Stav ohrožení státu / válečný stav v ČR",
+        "region": "CZ",
+        "single": 2,
+        "confirmed": 3,
+        "match": "(navrh|vyhlas|schval|zad[ao]|pozad)[a-z]*.{0,60}(stav[a-z]* ohrozeni statu|valecn[a-z]* stav)|(stav[a-z]* ohrozeni statu|valecn[a-z]* stav).{0,60}(navrh|vyhlas|schval|zad[ao]|pozad)|branna povinnost.{0,40}(omez|zakaz).{0,40}vycestov",
+        "exclude": "",
+        "note": "Za stavu ohrožení státu potřebuješ k vycestování souhlas krajského vojenského velitelství. Jednej hned."
+      },
+      {
+        "id": "mobilizace_cz",
+        "label": "Mobilizace v ČR",
+        "region": "CZ",
+        "single": 2,
+        "confirmed": 3,
+        "match": "(cesk|cesko|v cr|armad[a-z]* cr).{0,50}mobilizac|mobilizac.{0,50}(cesk|cesko|v cr|armad[a-z]* cr)|povolavac[a-z]* rozkaz",
+        "exclude": "rusk|rusko|ukrajin|kyjev|putin"
+      },
+      {
+        "id": "valka_de",
+        "label": "Válečný stav / letecký poplach v Německu",
+        "region": "DE",
+        "single": 2,
+        "confirmed": 3,
+        "match": "spannungsfall|verteidigungsfall|mobilmachung|luftalarm|luftangriff|raketenangriff|drohnenangriff",
+        "exclude": "ukrain|kiew|kyjiw|charkiw|odessa|russland|moskau|israel|iran|gaza|libanon|jemen|sudan|syrien|taiwan"
+      },
+      {
+        "id": "nato_clanek5",
+        "label": "Aktivace čl. 5 NATO",
+        "region": "EU",
+        "single": 2,
+        "confirmed": 3,
+        "match": "(artikel|article|clanek|clanku|cl[.]) ?5([^0-9]|$).{0,50}(aktivier|ausgelost|invok|activat|aktivov|aktivac|uplatn|vyhlas)|(aktivier|ausgelost|invok|activat|aktivov|aktivac|uplatn|vyhlas)[a-z]*.{0,50}(artikel|article|clanek|clanku|cl[.]) ?5([^0-9]|$)|bundnisfall.{0,30}(ausgerufen|festgestellt|erklart)",
+        "exclude": ""
+      },
+      {
+        "id": "utok_na_nato",
+        "label": "Útok na území NATO",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 2,
+        "match": "(angriff|angegriffen|attack|utok|zautocil|napad)[a-z]*.{0,40}(nato|polsk|polen|poland|litv|litauen|lithuan|lotys|lettland|latvi|eston|estland|pobalt|baltik|baltic)|(nato|polsk|polen|poland|litv|litauen|lithuan|lotys|lettland|latvi|eston|estland|pobalt|baltik|baltic)[a-z]*.{0,40}(angegriffen|attacked|napaden|pod utokem)",
+        "exclude": "kyber|cyber|hacker|fotbal|fussball|football|zapas|spiel"
+      },
+      {
+        "id": "jaderny",
+        "label": "Jaderný útok / výbuch",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 2,
+        "match": "(jadern|atomov|nuklear|nuclear|kernwaff|atomwaff|atombomb)[a-z]*.{0,40}(utok|uder|vybuch|explo|angriff|einsatz|strike|detonac|detonat|schlag)",
+        "exclude": "test|cvicen|ubung|exercise|zkousk|simul|hroz|droh|threat|rhetori|retori|varuj|warn|doktrin|doctrin|cvic|manev|manov"
+      },
+      {
+        "id": "radiace",
+        "label": "Únik radiace",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 2,
+        "match": "(unik|leak|austritt|freisetz|released?)[a-z]*.{0,40}(radiac|radioakt|strahl|radiation)|(radiac|radioakt|strahl|radiation)[a-z]*.{0,40}(unik|leak|austritt|freigesetzt|released)|(zaporiz|zaporoz|saporisch)[a-z]*.{0,60}(havari|unfall|accident|meltdown|taveni|kernschmelze)",
+        "exclude": "cviceni|ubung|exercise|film|serial"
+      },
+      {
+        "id": "blackout_cz",
+        "label": "Rozsáhlý výpadek proudu v ČR",
+        "region": "CZ",
+        "single": 1,
+        "confirmed": 2,
+        "match": "stav[a-z]* nouze.{0,60}(ceps|elektr|energet|prenosov)|(ceps|elektr|energet|prenosov)[a-z]*.{0,60}stav[a-z]* nouze|blackout (v|na|zasahl|postihl|ochromil)|rozsahl[a-z]* vypad|plosn[a-z]* vypad|vypad[a-z]* (proudu|elektriny).{0,60}(statisic|tisic|kraj|cel[a-z]* (cesk|republ|zem)|praha|cechy)",
+        "exclude": "cviceni|ubung|exercise|spanel|portugal|nemeck|polsk|rakous|slovensk|ital|franc|chile|kub|iran|ukrajin|usa|americ|brazil|indi|pakistan|venezuel"
+      },
+      {
+        "id": "blackout_de",
+        "label": "Blackout nebo plynová krize v Německu",
+        "region": "DE",
+        "single": 1,
+        "confirmed": 2,
+        "match": "(grossflachig|flachendeckend|bundesweit)[a-z]* stromausfall|stromausfall.{0,50}(sachsen|thuring|bayern|oberpfalz|magdeburg|leipzig|ostdeutsch|bundesweit|ganz deutschland)|blackout in (deutschland|sachsen|thuringen|bayern)|(alarmstufe|notfallstufe)[a-z]*.{0,30}gas|gas.{0,30}(alarmstufe|notfallstufe)|gasmangellage|(blackout|vypad[a-z]* proudu)[^.]{0,40}(nemeck|sasku|sasko|bavor|durynsk)",
+        "exclude": "ubung|cviceni|exercise"
+      },
+      {
+        "id": "spanelsko",
+        "label": "Krize ve Španělsku (útočiště)",
+        "region": "ES",
+        "single": 1,
+        "confirmed": 2,
+        "match": "apagon (general|masivo|total|en toda)|gran apagon|estado de (alarma|sitio|excepcion)|(blackout|vypad[a-z]* proudu)[^.]{0,40}(spanel|spain)|(spanel|spain)[a-z]*.{0,40}(blackout|vypad[a-z]* proudu)",
+        "exclude": "aniversario|vyroci|jahrestag|anniversary"
+      },
+      {
+        "id": "hranice",
+        "label": "Uzavírání hranic / vzdušného prostoru",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 2,
+        "match": "(uzavr|zavr|zavira|schliess|schlies|close|closing)[a-z]*.{0,40}(hranic|grenze|border|vzdusn[a-z]* prostor|luftraum|airspace)|(hranic|grenze|border|luftraum|airspace)[a-z]*.{0,40}(uzavr|geschlossen|closed|zavren)",
+        "exclude": "ukrajin|ukrain|izrael|israel|iran|libanon|lebanon|venezuel|afghan|pakistan|indie|indien|india|korea|syri|irak|iraq|mexik|mexic|thajsk|thailand|kambod|cambod|jemen|yemen|gaza|egypt|kuvajt|katar|qatar|dubaj|dubai|emirat"
+      },
+      {
+        "id": "ambasady",
+        "label": "Evakuace ambasád ve střední Evropě",
+        "region": "EU",
+        "single": 2,
+        "confirmed": 3,
+        "match": "(evakuac|evakuuj|evacuat|evakuier|odchod|abzug|order[a-z]* departure|zavr|schliess|close)[a-z]*.{0,60}(ambasad|velvyslan|botschaft|embass)[a-z]*.{0,40}(praze|prag|prague|berlin|varsav|warschau|warsaw|vilni|riga|rize|tallin|bratislav|vidni|wien|vienna)|(ambasad|velvyslan|botschaft|embass)[a-z]*.{0,40}(praze|prag|prague|berlin|varsav|warschau|warsaw|vilni|riga|rize|tallin|bratislav|vidni|wien|vienna).{0,60}(evakuac|evakuuj|evacuat|evakuier|odchod|abzug|order[a-z]* departure|zavr|schliess|close)",
+        "exclude": ""
+      }
+    ]
+  },
+  "notify": {
+    "min_level": 1,
+    "renotify_hours": 6,
+    "source_fail_hours": 6,
+    "weekly_heartbeat": {
+      "weekday": 6,
+      "hour": 18
+    }
+  }
+}

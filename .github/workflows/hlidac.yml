@@ -1,0 +1,96 @@
+name: Krizový hlídač
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"     # GitHub plán občas zpozdí, pro včasné varování to stačí
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+  actions: write               # udržení plánu, viz poslední krok
+
+concurrency:
+  group: hlidac
+  cancel-in-progress: false
+
+jobs:
+  hlidej:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Knihovna pro šifrování stavu
+        run: pip install --quiet cryptography tzdata
+
+      - name: Obnovit stav z minulého běhu
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: hlidac-stav-${{ github.run_id }}
+          restore-keys: hlidac-stav-
+
+      - name: Osobní konfigurace ze secretu
+        env:
+          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+        run: |
+          if [ -n "$CONFIG_JSON" ]; then
+            printf '%s' "$CONFIG_JSON" > config.json
+            python -c "import json; json.load(open('config.json'))" && echo "Použita osobní konfigurace."
+          else
+            echo "::warning::Secret CONFIG_JSON chybí – běží ukázková konfigurace z repa."
+          fi
+
+      - name: Průchod hlídače a sestavení webu
+        env:
+          HLIDAC_DATA: data
+          DASH_TOKEN: ${{ secrets.DASH_TOKEN }}
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+        run: |
+          if [ -z "$DASH_TOKEN" ]; then
+            echo "::error::Chybí secret DASH_TOKEN – bez něj by byl stav na webu veřejně čitelný."
+            exit 1
+          fi
+          python hlidac.py --site _site
+
+      - name: Uložit stav pro další běh
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: hlidac-stav-${{ github.run_id }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Nasadit web
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Udržet plánované spouštění
+        # GitHub vypne plán ve veřejném repu po 60 dnech bez aktivity – opětovné zapnutí ho drží naživu
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/hlidac.yml/enable" || true
