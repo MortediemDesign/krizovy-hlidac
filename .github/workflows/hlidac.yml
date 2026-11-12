@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "*/10 * * * *"     # GitHub plán občas zpozdí, pro včasné varování to stačí
   workflow_dispatch:
+    inputs:
+      test_notify:
+        description: "Poslat zkušební upozornění (stupeň 1 a 3)"
+        type: boolean
+        default: false
   push:
     branches: [main]
 
@@ -21,6 +26,18 @@ jobs:
   hlidej:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    env:
+      HLIDAC_DATA: data
+      DASH_TOKEN: ${{ secrets.DASH_TOKEN }}
+      CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
+      DASHBOARD_URL_SECRET: ${{ secrets.DASHBOARD_URL }}
+      PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
+      PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
+      TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
+      HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
@@ -41,29 +58,26 @@ jobs:
           key: hlidac-stav-${{ github.run_id }}
           restore-keys: hlidac-stav-
 
-      - name: Průchod hlídače a sestavení webu
-        env:
-          HLIDAC_DATA: data
-          DASH_TOKEN: ${{ secrets.DASH_TOKEN }}
-          CONFIG_JSON: ${{ secrets.CONFIG_JSON }}
-          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
-          PUSHOVER_TOKEN: ${{ secrets.PUSHOVER_TOKEN }}
-          PUSHOVER_USER: ${{ secrets.PUSHOVER_USER }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
-          NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
-          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
+      - name: Kontrola nastavení
         run: |
           if [ -z "$DASH_TOKEN" ]; then
             echo "::error::Chybí secret DASH_TOKEN – bez něj by byl stav na webu veřejně čitelný."
             exit 1
           fi
-          if [ -z "$DASHBOARD_URL" ]; then   # výchozí adresa webu na GitHub Pages i s kódem
+          url="$DASHBOARD_URL_SECRET"
+          if [ -z "$url" ]; then   # výchozí adresa webu na GitHub Pages i s kódem
             owner=$(echo "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')
-            export DASHBOARD_URL="https://${owner}.github.io/${GITHUB_REPOSITORY#*/}/?k=${DASH_TOKEN}"
+            url="https://${owner}.github.io/${GITHUB_REPOSITORY#*/}/?k=${DASH_TOKEN}"
           fi
-          python hlidac.py --site _site
+          echo "DASHBOARD_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Zkušební upozornění
+        if: github.event_name == 'workflow_dispatch' && inputs.test_notify
+        continue-on-error: true
+        run: python hlidac.py --test-notify
+
+      - name: Průchod hlídače a sestavení webu
+        run: python hlidac.py --site _site
 
       - name: Uložit stav pro další běh
         if: always()

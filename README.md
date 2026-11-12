@@ -25,7 +25,7 @@ Celkový stav se počítá z domova, práce a Evropy. Útočiště se ukazuje zv
 
 1. **Pages:** Settings → Pages → Source: *GitHub Actions*.
 2. **Secret** (Settings → Secrets and variables → Actions → New repository secret): `DASH_TOKEN` – kód k webu, dlouhý náhodný řetězec (`python3 -c "import secrets; print(secrets.token_urlsafe(24))"`). Bez něj se web nesestaví.
-3. **Spuštění:** Actions → Krizový hlídač → *Run workflow*. Pak už běží samo každých 10 minut.
+3. **Spuštění:** Actions → Krizový hlídač → *Run workflow*. Pak už běží samo každých 10 minut. Po přidání kanálu upozornění zaškrtni při ručním spuštění *Poslat zkušební upozornění* a výsledek uvidíš v souhrnu běhu.
 4. Otevři `https://<uživatel>.github.io/krizovy-hlidac/?k=<DASH_TOKEN>` v Safari → Sdílet → **Přidat na plochu**. Pokud aplikace na ploše chce kód, vlož ho jednou a zapamatuje si ho.
 
 **Osobní konfigurace** (místa, trasa) nemusí být ve veřejném `config.json`, ten je jen ukázka. Hlídač ji hledá v tomto pořadí:

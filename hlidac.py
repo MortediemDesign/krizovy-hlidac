@@ -982,12 +982,17 @@ def main():
         ch = channels_configured()
         if not ch:
             print("Není nastaven žádný kanál – vyplň .env (PUSHOVER_*, TELEGRAM_* nebo NTFY_TOPIC).")
+            if os.environ.get("GITHUB_ACTIONS") == "true":
+                print("::error title=Zkušební upozornění::Není nastaven žádný kanál (secrets PUSHOVER_TOKEN a PUSHOVER_USER, TELEGRAM_* nebo NTFY_TOPIC).", flush=True)
             sys.exit(1)
         for lvl in (1, 3):
             sent = send_notification(f"{LEVELS[lvl][1]} Test hlídače – stupeň {lvl}",
                                      "Toto je zkouška. Pokud tě stupeň 3 probudil i v režimu Nerušit, je vše nastavené správně.",
                                      lvl, cfg.get("dashboard_url", ""))
             print(f"Stupeň {lvl}: odesláno přes {', '.join(sent) or 'nic (chyba)'}")
+            if os.environ.get("GITHUB_ACTIONS") == "true":
+                kind = "notice" if sent else "error"
+                print(f"::{kind} title=Zkušební upozornění::Stupeň {lvl}: {', '.join(sent) or 'neodesláno – zkontroluj přístupové údaje kanálu'}", flush=True)
         return
 
     if args.demo:
