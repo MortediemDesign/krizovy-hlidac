@@ -132,7 +132,7 @@ def base_routes():
         "travel.state.gov": US.replace(b"Czechia - Level 4", b"Czechia - Level 1").replace(b"Poland - Level 3", b"Poland - Level 1"),
         "imis.bfs.de": bfs([0.09, 0.1, 0.11]),
         "ct24": rss([("Počasí: o víkendu sníh", None)]),
-        "irozhlas": rss([]), "novinky": rss([]), "tagesschau": rss([]), "mdr": rss([]), "rtve": rss([]), "bbc": rss([]),
+        "irozhlas": rss([]), "novinky": rss([]), "tagesschau": rss([]), "mdr": rss([]), "elpais": rss([]), "bbc": rss([]),
     }
 
 
@@ -329,7 +329,7 @@ class TestCycle(unittest.TestCase):
     def test_spain_not_in_overall(self):
         routes = base_routes()
         routes["dashboard/146120000000"] = b"[]"
-        routes["rtve"] = rss([("Gran apagón en toda España", None)])
+        routes["elpais"] = rss([("Gran apagón en toda España", None)])
         routes["bbc"] = rss([("Spain blackout leaves millions without power", None)])
         st = hlidac.run_cycle(CFG, {}, fetch=FakeNet(routes), now=NOW)
         es = next(r for r in st["regions"] if r["code"] == "ES")

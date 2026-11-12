@@ -87,7 +87,7 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 | NOAA SWPC | geomagnetické bouře, které ohrožují rozvodné sítě |
 | Auswärtiges Amt, US State Dept | cestovní varování |
 | BfS ODL | měření radiace v Německu, výřez u českých hranic |
-| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, RTVE, BBC | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
+| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, BBC | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
 
 Nefunkční zdroj ukáže dashboard v části Zdroje. Když jich nefunguje většina, místo „Klid“ ukáže „Bez dat“.
 

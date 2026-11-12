@@ -151,9 +151,9 @@
         "url": "https://www.mdr.de/nachrichten/index-rss.xml"
       },
       {
-        "id": "rtve",
-        "name": "RTVE",
-        "url": "https://www.rtve.es/api/noticias.rss"
+        "id": "elpais",
+        "name": "El País",
+        "url": "https://feeds.elpais.com/mrss-s/pages/ep/site/elpais.com/section/ultimas-noticias/portada"
       },
       {
         "id": "bbc",

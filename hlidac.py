@@ -929,7 +929,7 @@ def demo_status(cfg):
     now = utcnow()
     state = {"initialized": True, "sources": {
         k: {"label": v[0], "ok": True, "last_ok": iso(now), "info": "ukázka"} for k, v in SOURCES.items()}}
-    state["sources"]["news"] = {"label": "Zprávy (RSS)", "ok": True, "last_ok": iso(now), "info": "6/7 zdrojů funguje (nefunguje: rtve)"}
+    state["sources"]["news"] = {"label": "Zprávy (RSS)", "ok": True, "last_ok": iso(now), "info": "6/7 zdrojů funguje (nefunguje: mdr)"}
     state["sources"]["us_state"].update(ok=False, error="TimeoutError: timed out")
     state["history"] = [{"time": iso(now - timedelta(minutes=35)), "title": "🟠 PŘIPRAV SE: EU",
                          "message": "🟠 [EU] Útok na území NATO (potvrzeno) …", "level": 2, "channels": ["pushover"]}]
