@@ -10,14 +10,147 @@
     "CZ": "Česko – domov",
     "DE": "Německo – práce",
     "EU": "Evropa / NATO",
-    "ES": "Útočiště – Španělsko"
+    "ES": "Španělsko",
+    "PT": "Portugalsko",
+    "IE": "Irsko"
   },
   "plan": {
-    "cil": "Doplň cíl, kam pojedeš",
-    "trasa": "Domov → Hraniční přechod → Tranzitní město → Cíl",
-    "zalozni_trasa": "Doplň záložní trasu jiným směrem",
-    "sraz": "Doplň, kde se rodina sejde, když nebudete spolu",
-    "poznamka": "Doklady, hotovost, léky a věci pro děti mít v jedné tašce u dveří."
+    "cil": "Útočiště podle doporučení",
+    "sraz": "Doplň, kde se rodina sejde, když nebudete spolu.",
+    "poznamka": "Doklady, hotovost, léky a věci pro děti mít v jedné tašce u dveří.",
+    "trasy": [
+      {
+        "id": "hlavni",
+        "nazev": "Do Španělska",
+        "dalnice": [
+          "A6",
+          "A5"
+        ],
+        "body": [
+          {
+            "nazev": "Praha",
+            "lat": 50.0755,
+            "lon": 14.4378
+          },
+          {
+            "nazev": "Rozvadov",
+            "lat": 49.6667,
+            "lon": 12.55
+          },
+          {
+            "nazev": "Norimberk",
+            "lat": 49.4521,
+            "lon": 11.0767
+          },
+          {
+            "nazev": "Karlsruhe",
+            "lat": 49.0069,
+            "lon": 8.4037
+          },
+          {
+            "nazev": "Lyon",
+            "lat": 45.764,
+            "lon": 4.8357
+          },
+          {
+            "nazev": "Barcelona",
+            "lat": 41.3874,
+            "lon": 2.1686
+          }
+        ]
+      },
+      {
+        "id": "portugalsko",
+        "nazev": "Do Portugalska",
+        "dalnice": [
+          "A6",
+          "A5"
+        ],
+        "body": [
+          {
+            "nazev": "Praha",
+            "lat": 50.0755,
+            "lon": 14.4378
+          },
+          {
+            "nazev": "Norimberk",
+            "lat": 49.4521,
+            "lon": 11.0767
+          },
+          {
+            "nazev": "Karlsruhe",
+            "lat": 49.0069,
+            "lon": 8.4037
+          },
+          {
+            "nazev": "Lyon",
+            "lat": 45.764,
+            "lon": 4.8357
+          },
+          {
+            "nazev": "Toulouse",
+            "lat": 43.6047,
+            "lon": 1.4442
+          },
+          {
+            "nazev": "Burgos",
+            "lat": 42.3439,
+            "lon": -3.6969
+          },
+          {
+            "nazev": "Lisabon",
+            "lat": 38.7223,
+            "lon": -9.1393
+          }
+        ]
+      },
+      {
+        "id": "irsko",
+        "nazev": "Do Irska (trajekt)",
+        "dalnice": [
+          "A6",
+          "A3",
+          "A4"
+        ],
+        "body": [
+          {
+            "nazev": "Praha",
+            "lat": 50.0755,
+            "lon": 14.4378
+          },
+          {
+            "nazev": "Norimberk",
+            "lat": 49.4521,
+            "lon": 11.0767
+          },
+          {
+            "nazev": "Frankfurt",
+            "lat": 50.1109,
+            "lon": 8.6821
+          },
+          {
+            "nazev": "Kolín nad Rýnem",
+            "lat": 50.9375,
+            "lon": 6.9603
+          },
+          {
+            "nazev": "Cherbourg",
+            "lat": 49.6337,
+            "lon": -1.6222
+          },
+          {
+            "nazev": "Rosslare",
+            "lat": 52.2531,
+            "lon": -6.3389
+          },
+          {
+            "nazev": "Dublin",
+            "lat": 53.3498,
+            "lon": -6.2603
+          }
+        ]
+      }
+    ]
   },
   "nina": {
     "enabled": true,
@@ -47,7 +180,9 @@
       "POL": "EU",
       "AUT": "EU",
       "SVK": "EU",
-      "FRA": "EU"
+      "FRA": "EU",
+      "PRT": "PT",
+      "IRL": "IE"
     }
   },
   "meteoalarm": {
@@ -62,6 +197,16 @@
         "url": "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-spain",
         "region": "ES",
         "area_regex": ""
+      },
+      {
+        "url": "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-portugal",
+        "region": "PT",
+        "area_regex": ""
+      },
+      {
+        "url": "https://feeds.meteoalarm.org/feeds/meteoalarm-legacy-atom-ireland",
+        "region": "IE",
+        "area_regex": ""
       }
     ]
   },
@@ -72,7 +217,9 @@
       "ES": "ES",
       "PL": "EU",
       "AT": "EU",
-      "SK": "EU"
+      "SK": "EU",
+      "PT": "PT",
+      "IE": "IE"
     }
   },
   "us_state": {
@@ -103,6 +250,18 @@
           "Poland",
           "Austria",
           "Slovakia"
+        ]
+      },
+      {
+        "region": "PT",
+        "names": [
+          "Portugal"
+        ]
+      },
+      {
+        "region": "IE",
+        "names": [
+          "Ireland"
         ]
       }
     ]
@@ -159,6 +318,16 @@
         "id": "bbc",
         "name": "BBC World",
         "url": "https://feeds.bbci.co.uk/news/world/rss.xml"
+      },
+      {
+        "id": "rtp",
+        "name": "RTP",
+        "url": "https://www.rtp.pt/noticias/rss"
+      },
+      {
+        "id": "rte",
+        "name": "RTÉ",
+        "url": "https://www.rte.ie/feeds/rss/?index=/news/"
       }
     ],
     "rules": [
@@ -245,15 +414,6 @@
         "exclude": "ubung|cviceni|exercise"
       },
       {
-        "id": "spanelsko",
-        "label": "Krize ve Španělsku (útočiště)",
-        "region": "ES",
-        "single": 1,
-        "confirmed": 2,
-        "match": "apagon (general|masivo|total|en toda)|gran apagon|estado de (alarma|sitio|excepcion)|(blackout|vypad[a-z]* proudu)[^.]{0,40}(spanel|spain)|(spanel|spain)[a-z]*.{0,40}(blackout|vypad[a-z]* proudu)",
-        "exclude": "aniversario|vyroci|jahrestag|anniversary"
-      },
-      {
         "id": "hranice",
         "label": "Uzavírání hranic / vzdušného prostoru",
         "region": "EU",
@@ -270,6 +430,57 @@
         "confirmed": 3,
         "match": "(evakuac|evakuuj|evacuat|evakuier|odchod|abzug|order[a-z]* departure|zavr|schliess|close)[a-z]*.{0,60}(ambasad|velvyslan|botschaft|embass)[a-z]*.{0,40}(praze|prag|prague|berlin|varsav|warschau|warsaw|vilni|riga|rize|tallin|bratislav|vidni|wien|vienna)|(ambasad|velvyslan|botschaft|embass)[a-z]*.{0,40}(praze|prag|prague|berlin|varsav|warschau|warsaw|vilni|riga|rize|tallin|bratislav|vidni|wien|vienna).{0,60}(evakuac|evakuuj|evacuat|evakuier|odchod|abzug|order[a-z]* departure|zavr|schliess|close)",
         "exclude": ""
+      },
+      {
+        "id": "spanelsko",
+        "label": "Krize ve Španělsku (útočiště)",
+        "region": "ES",
+        "single": 1,
+        "confirmed": 2,
+        "match": "apagon (general|masivo|total|en toda)|gran apagon|estado de (alarma|sitio|excepcion)|(blackout|vypad[a-z]* proudu)[^.]{0,40}(spanel|spain)|(spanel|spain)[a-z]*.{0,40}(blackout|vypad[a-z]* proudu)",
+        "exclude": "aniversario|vyroci|jahrestag|anniversary|ecuador|peru|mexic|colombi|venezuel|argentin|chile|bolivi|hondur|guatemal|salvador|nicaragu|cuba|panam|paraguay|uruguay|haiti|brasil|brazil"
+      },
+      {
+        "id": "portugalsko_rtp",
+        "label": "Krize v Portugalsku (útočiště)",
+        "region": "PT",
+        "single": 1,
+        "confirmed": 2,
+        "feeds": [
+          "rtp"
+        ],
+        "match": "apagao (geral|total|nacional)|grande apagao|estado de (emergencia|sitio)|estado de calamidade nacional",
+        "exclude": "aniversario|ecuador|peru|mexic|colombi|venezuel|argentin|chile|bolivi|hondur|guatemal|salvador|nicaragu|cuba|panam|paraguay|uruguay|haiti|brasil|brazil"
+      },
+      {
+        "id": "portugalsko",
+        "label": "Krize v Portugalsku (útočiště)",
+        "region": "PT",
+        "single": 1,
+        "confirmed": 2,
+        "match": "(blackout|power outage|power cut|vypad[a-z]* proudu|stromausfall|apagon|state of emergency|nouzov[a-z]* stav)[^.]{0,40}(portugal)|(portugal)[a-z]*.{0,40}(blackout|power outage|power cut|vypad[a-z]* proudu|stromausfall|apagon|state of emergency|nouzov[a-z]* stav)",
+        "exclude": "anniversary|vyroci|ecuador|peru|mexic|colombi|venezuel|argentin|chile|bolivi|hondur|guatemal|salvador|nicaragu|cuba|panam|paraguay|uruguay|haiti|brasil|brazil"
+      },
+      {
+        "id": "irsko_rte",
+        "label": "Krize v Irsku (útočiště)",
+        "region": "IE",
+        "single": 1,
+        "confirmed": 2,
+        "feeds": [
+          "rte"
+        ],
+        "match": "(nationwide|widespread|national)[a-z]* (power cut|power outage|blackout)|state of emergency|status red|red (weather )?warning",
+        "exclude": "anniversary|ecuador|peru|mexic|colombi|venezuel|argentin|chile|bolivi|hondur|guatemal|salvador|nicaragu|cuba|panam|paraguay|uruguay|haiti|brasil|brazil|usa|america|gaza|ukrain|israel|iran"
+      },
+      {
+        "id": "irsko",
+        "label": "Krize v Irsku (útočiště)",
+        "region": "IE",
+        "single": 1,
+        "confirmed": 2,
+        "match": "(blackout|power outage|power cut|vypad[a-z]* proudu|stromausfall|state of emergency|nouzov[a-z]* stav)[^.]{0,40}(ireland|irsk|irland)|(ireland|irsk|irland)[a-z]*.{0,40}(blackout|power outage|power cut|vypad[a-z]* proudu|stromausfall|state of emergency|nouzov[a-z]* stav)",
+        "exclude": "northern ireland|severni irsk|nordirland|anniversary|vyroci"
       }
     ]
   },
@@ -280,6 +491,65 @@
     "weekly_heartbeat": {
       "weekday": 6,
       "hour": 18
+    },
+    "repeat_level3_minutes": 30
+  },
+  "route_status": {
+    "enabled": true,
+    "min_delay_minutes": 30
+  },
+  "utocista": [
+    {
+      "code": "ES",
+      "name": "Španělsko",
+      "trasa": "hlavni",
+      "pozn": "Ukázka – doplň vlastní."
+    },
+    {
+      "code": "PT",
+      "name": "Portugalsko",
+      "trasa": "portugalsko"
+    },
+    {
+      "code": "IE",
+      "name": "Irsko",
+      "trasa": "irsko",
+      "pozn": "Trajekt z Cherbourgu do Rosslare."
     }
+  ],
+  "chmi_hydro": {
+    "enabled": true,
+    "rise_cm": 40,
+    "rise_hours": 3,
+    "levels": {
+      "2": 1,
+      "3": 2,
+      "4": 3
+    },
+    "stations": [
+      {
+        "id": "0-203-1-219000",
+        "name": "Louny – Ohře",
+        "region": "CZ"
+      }
+    ]
+  },
+  "fuel": {
+    "enabled": true,
+    "radius_km": 10,
+    "min_open_share": 0.4,
+    "price_jump": 1.25,
+    "points": [
+      {
+        "name": "Norimberk",
+        "lat": 49.4521,
+        "lon": 11.0767
+      },
+      {
+        "name": "Karlsruhe",
+        "lat": 49.0069,
+        "lon": 8.4037
+      }
+    ]
   }
 }

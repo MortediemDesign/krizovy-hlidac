@@ -105,6 +105,38 @@ MOWAS_NATIONAL = json.dumps([
 ]).encode()
 
 
+def chmi_meta(stations):
+    header = ("objID, DBC, STATION_NAME, STREAM_NAME, GEOGR1, GEOGR2, SPA_TYP, SPAH_DS, SPAH_UNIT, DRYH, SPA1H, SPA2H, "
+              "SPA3H, SPA4H, SPAQ_DS, SPAQ_UNIT, DRYQ, SPA1Q, SPA2Q, SPA3Q, SPA4Q, ISFORECAST")
+    rows = [[sid, "x", name, river, 50.3, 13.8, "H", "", "CM", None, l1, l2, l3, None, "", "M3_S", None, 1, 2, 3, None, 1]
+            for sid, name, river, (l1, l2, l3) in stations]
+    return json.dumps({"zaznamID": "x", "data": {"type": "DataCollection", "data": {"header": header, "values": rows}}}).encode()
+
+
+def chmi_data(sid, h_series, hf_series=()):
+    ts = lambda vals: [{"dt": d, "value": v} for d, v in vals]
+    return json.dumps({"objList": [{"objID": sid, "tsList": [
+        {"tsConID": "H", "unit": "CM", "tsData": ts(h_series)},
+        {"tsConID": "H_F", "unit": "CM", "tsData": ts(hf_series)},
+        {"tsConID": "Q", "unit": "M3_S", "tsData": [{"dt": "2026-11-12T07:50:00Z", "value": 10.5}]}]}]}).encode()
+
+
+CHMI_META = chmi_meta([("0-203-1-219000", "Louny", "Ohře", (400, 440, 490))])
+CHMI_CALM = chmi_data("0-203-1-219000", [("2026-11-12T07:00:00Z", 180), ("2026-11-12T07:50:00Z", 182)])
+
+AUTOBAHN_CLOSURE = json.dumps({"closure": [
+    {"identifier": "a", "isBlocked": "true", "future": False, "display_type": "CLOSURE",
+     "title": "A6 | Schwetzingen/Hockenheim - Walldorf", "subtitle": " Mannheim -> Heilbronn"},
+    {"identifier": "b", "isBlocked": "true", "future": True, "display_type": "CLOSURE", "title": "A6 | budoucí", "subtitle": ""},
+    {"identifier": "c", "isBlocked": "false", "future": False, "display_type": "CLOSURE", "title": "A6 | jen pruh", "subtitle": ""}]}).encode()
+AUTOBAHN_WARNING = json.dumps({"warning": [
+    {"identifier": "w1", "display_type": "WARNING", "title": "A6 | Kreuz Nürnberg-Süd", "subtitle": "Heilbronn -> Nürnberg",
+     "delayTimeValue": "75", "abnormalTrafficType": "STATIONARY_TRAFFIC", "isBlocked": "false"},
+    {"identifier": "w2", "display_type": "WARNING", "title": "A6 | malá kolona", "subtitle": "", "delayTimeValue": "10",
+     "isBlocked": "false"}]}).encode()
+EMPTY_CLOSURE, EMPTY_WARNING = b'{"closure": []}', b'{"warning": []}'
+
+
 class FakeNet:
     def __init__(self, routes):
         self.routes = dict(routes)
@@ -128,6 +160,13 @@ def base_routes():
         "gdacs.org": rss([]),
         "atom-czechia": METEO_ES,
         "atom-spain": METEO_ES,
+        "atom-portugal": METEO_ES,
+        "atom-ireland": METEO_ES,
+        "chmi.cz/hydrology/now/metadata": CHMI_META,
+        "chmi.cz/hydrology/now/data": CHMI_CALM,
+        "/services/closure": EMPTY_CLOSURE,
+        "/services/warning": EMPTY_WARNING,
+        "rtp.pt": rss([]), "rte.ie": rss([]),
         "auswaertiges-amt": json.dumps({"response": {}}).encode(),
         "travel.state.gov": US.replace(b"Czechia - Level 4", b"Czechia - Level 1").replace(b"Poland - Level 3", b"Poland - Level 1"),
         "imis.bfs.de": bfs([0.09, 0.1, 0.11]),
@@ -222,7 +261,7 @@ class TestSources(unittest.TestCase):
         self.assertEqual([(e["region"], e["level"]) for e in ev], [("CZ", 2)])
 
     def test_meteoalarm(self):
-        ev, info = hlidac.src_meteoalarm(CFG, FakeNet({"atom-czechia": METEO_CZ, "atom-spain": METEO_ES}))
+        ev, info = hlidac.src_meteoalarm(CFG, FakeNet({"atom-czechia": METEO_CZ, "atom-": METEO_ES}))
         self.assertEqual(len(ev), 1)                            # duplicita, Vysočina i prošlá výstraha vyřazeny
         self.assertEqual((ev[0]["region"], ev[0]["level"]), ("CZ", 2))
 
@@ -244,6 +283,83 @@ class TestSources(unittest.TestCase):
         self.assertEqual(ev, [])                                 # běžný déšť / pozadí
         ev, _ = hlidac.src_bfs(CFG, FakeNet({"imis.bfs.de": bfs([2.5, 3.1, 2.2])}))
         self.assertEqual(ev[0]["level"], 3)
+
+
+class TestNewSources(unittest.TestCase):
+    def test_chmi_stages_forecast_rise(self):
+        meta = chmi_meta([("A", "Žatec", "Ohře", (115, 140, 180)), ("B", "Louny", "Ohře", (190, 230, 270)),
+                          ("C", "Terezín", "Ohře", (260, 290, None))])
+        cfg = {**CFG, "chmi_hydro": {**CFG["chmi_hydro"], "stations": [
+            {"id": "A", "name": "Žatec – Ohře"}, {"id": "B", "name": "Louny – Ohře"}, {"id": "C", "name": "Terezín – Ohře"}]}}
+        now = datetime.now(timezone.utc)
+        t = lambda m: (now + timedelta(minutes=m)).strftime("%Y-%m-%dT%H:%M:00Z")
+        net = FakeNet({
+            "metadata": meta,
+            "data/A.json": chmi_data("A", [(t(-60), 150), (t(-10), 185)]),                         # 3. SPA → 2
+            "data/B.json": chmi_data("B", [(t(-60), 150), (t(-10), 160)], [(t(600), 235)]),       # předpověď 2. SPA → 1
+            "data/C.json": chmi_data("C", [(t(-170), 100), (t(-10), 150)]),                        # +50 cm za 3 h → 1
+        })
+        mem = {}
+        ev, info, extra = hlidac.src_chmi(cfg, net, mem)
+        got = sorted((e["title"].split(":")[0], e["level"]) for e in ev)
+        self.assertEqual(got, [("Louny – Ohře", 1), ("Terezín – Ohře", 1), ("Žatec – Ohře", 2)])
+        self.assertIn("předpověď 2. SPA", next(e["title"] for e in ev if e["title"].startswith("Louny")))
+        self.assertEqual([r["stage"] for r in extra["rivers"]], [3, 0, 0])
+        self.assertIn("meta", mem)                                     # metadata se drží 24 h
+
+    def test_route(self):
+        cfg = {**CFG, "plan": {"trasy": [{"id": "x", "dalnice": ["A6", "A5"]}]}}
+        net = FakeNet({"A6/services/closure": AUTOBAHN_CLOSURE, "A6/services/warning": AUTOBAHN_WARNING,
+                       "A5/services/closure": EMPTY_CLOSURE, "A5/services/warning": EMPTY_WARNING})
+        ev, info, extra = hlidac.src_route(cfg, net)
+        a6 = extra["roads"]["A6"]
+        self.assertEqual(ev, [])                                        # trasa sama stupeň nezvedá
+        self.assertEqual([c["title"] for c in a6["closures"]], ["A6 | Schwetzingen/Hockenheim - Walldorf", "A6 | jen pruh"])
+        self.assertEqual([j["delay"] for j in a6["jams"]], [75])
+        self.assertTrue(a6["problem"])
+        self.assertFalse(extra["roads"]["A5"]["problem"])
+        lines = hlidac.route_issues(cfg, extra, "x")
+        self.assertEqual(lines, ["A6 | Schwetzingen/Hockenheim - Walldorf uzavřeno (Mannheim -> Heilbronn)",
+                                 "A6 | Kreuz Nürnberg-Süd: zdržení 75 min (Heilbronn -> Nürnberg)"])
+
+    def test_fuel(self):
+        cfg = {**CFG, "fuel": {**CFG["fuel"], "points": [{"name": "N", "lat": 49.4, "lon": 11.0}]}}
+        self.assertIn("vypnuto", hlidac.src_fuel(cfg, FakeNet({}), {})[1])          # bez klíče nic nedělá
+        os.environ["TANKERKOENIG_KEY"] = "k"
+        try:
+            def resp(n_open, n_total, price):
+                st = [{"id": str(i), "isOpen": i < n_open, "diesel": price} for i in range(n_total)]
+                return json.dumps({"ok": True, "stations": st}).encode()
+            mem = {}
+            for _ in range(25):
+                hlidac.src_fuel(cfg, FakeNet({"tankerkoenig": resp(20, 22, 1.60)}), mem)
+            ev, info, extra = hlidac.src_fuel(cfg, FakeNet({"tankerkoenig": resp(20, 22, 2.10)}), mem)
+            self.assertEqual([e["eid"] if "eid" in e else e["id"] for e in ev], ["fuel:N:price"])
+            ev, *_ = hlidac.src_fuel(cfg, FakeNet({"tankerkoenig": resp(3, 22, 1.60)}), mem)
+            hour = datetime.now(timezone.utc).astimezone(hlidac.local_tz(cfg)).hour
+            if 7 <= hour <= 20:
+                self.assertIn("fuel:N:closed", [e["id"] for e in ev])
+        finally:
+            os.environ.pop("TANKERKOENIG_KEY")
+
+    def test_rule_feed_filter(self):
+        rules = hlidac.compile_rules(CFG)
+        ids = {r["id"] for r in hlidac.match_rules("Apagão geral deixa país às escuras", rules)}
+        self.assertIn("portugalsko_rtp", ids)
+        rule = next(r for r in rules if r["id"] == "portugalsko_rtp")
+        self.assertEqual(rule["feeds"], ["rtp"])
+        self.assertNotIn("spanelsko", {r["id"] for r in hlidac.match_rules("Estado de excepción en Ecuador", rules)})
+
+
+class TestRefuges(unittest.TestCase):
+    def test_recommendation(self):
+        rec = hlidac.recommend_refuge(CFG, {"ES": 2, "PT": 0, "IE": 0})
+        self.assertEqual((rec["code"], rec["calm"]), ("PT", True))            # nejklidnější, pak pořadí
+        rec = hlidac.recommend_refuge(CFG, {"ES": 0, "PT": 0, "IE": 0})
+        self.assertEqual(rec["code"], "ES")                                    # preference
+        rec = hlidac.recommend_refuge(CFG, {"ES": 3, "PT": 2, "IE": 2})
+        self.assertEqual((rec["code"], rec["calm"]), ("PT", False))
+        self.assertEqual(hlidac.region_order(CFG), ["CZ", "DE", "EU", "ES", "PT", "IE"])
 
 
 class TestCycle(unittest.TestCase):
@@ -317,6 +433,29 @@ class TestCycle(unittest.TestCase):
         status = json.loads((hlidac.DATA / "status.json").read_text(encoding="utf-8"))
         for key in ("overall", "regions", "events", "sources", "actions", "plan", "history"):
             self.assertIn(key, status)
+
+    def test_level3_reminders(self):
+        routes = base_routes()
+        routes["dashboard/146120000000"] = b"[]"
+        state = {}
+        hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW)               # klid, start
+        routes["ct24"] = rss([("Vláda navrhla vyhlásit stav ohrožení státu", None)])
+        routes["irozhlas"] = rss([("Sněmovna projedná návrh vyhlásit stav ohrožení státu", None)])
+        routes["/services/closure"] = AUTOBAHN_CLOSURE
+        hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW + timedelta(minutes=10))
+        title, msg, lvl = self.sent[-1]
+        self.assertEqual(lvl, 3)
+        self.assertIn("Doporučený cíl: Španělsko", msg)
+        self.assertIn("Na trase: A6 | Schwetzingen", msg)
+        n = len(self.sent)
+        hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW + timedelta(minutes=20))
+        self.assertEqual(len(self.sent), n)                                         # za 10 min ještě ne
+        hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW + timedelta(minutes=40))
+        self.assertEqual(len(self.sent), n + 1)
+        self.assertEqual(self.sent[-1][0], "🔴 Stále ODJEĎ")
+        self.assertEqual(self.sent[-1][2], 3)
+        hlidac.run_cycle(CFG, state, fetch=FakeNet(routes), now=NOW + timedelta(minutes=50))
+        self.assertEqual(len(self.sent), n + 1)
 
     def test_old_news_ignored(self):
         routes = base_routes()

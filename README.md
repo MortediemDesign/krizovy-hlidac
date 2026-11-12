@@ -5,11 +5,11 @@ Osobní systém včasného varování před válkou, rozsáhlým blackoutem a ka
 | Stupeň | Význam | Typický spouštěč |
 |---|---|---|
 | 🟢 Klid | nic neobvyklého | — |
-| 🟡 Sleduj | zvýšené napětí | výstraha ČHMÚ, geomagnetická bouře G4, jednotlivá zpráva o výpadku nebo útoku |
-| 🟠 Připrav se | hrozba v řádu dnů | výstraha NINA „Extreme“, zvýšená radiace u hranic, zpráva o stavu ohrožení státu z 1 zdroje, předpověď bouře G5 |
+| 🟡 Sleduj | zvýšené napětí | výstraha ČHMÚ, 2. SPA na vodočtu, geomagnetická bouře G4, zavřené pumpy na trase, jednotlivá zpráva o výpadku nebo útoku |
+| 🟠 Připrav se | hrozba v řádu dnů | výstraha NINA „Extreme“, 3. SPA na vodočtu, zvýšená radiace u hranic, zpráva o stavu ohrožení státu z 1 zdroje, předpověď bouře G5 |
 | 🔴 Odjeď | bezprostřední hrozba | letecký poplach v Německu, potvrzený návrh stavu ohrožení státu, cestovní varování pro ČR, čl. 5 NATO |
 
-Celkový stav se počítá z domova, práce a Evropy. Útočiště se ukazuje zvlášť: problém tam znamená „jeď jinam“, ne „uteč z domova“.
+Celkový stav se počítá z domova, práce a Evropy. Útočiště (v ukázce Španělsko, Portugalsko a Irsko) se hodnotí zvlášť: problém tam znamená „jeď jinam“, ne „uteč z domova“. Dashboard i upozornění od stupně 🟠 doporučí nejklidnější útočiště a ukážou komplikace na trase k němu. Dokud trvá 🔴, hlídač upozornění opakuje každých 30 minut.
 
 **Proč spěchat u stavu ohrožení státu:** za stavu ohrožení státu nebo válečného stavu potřebuje člověk s brannou povinností k cestě do ciziny souhlas krajského vojenského velitelství (branný zákon č. 585/2004 Sb.) a na souhlas není nárok. Proto už potvrzená zpráva o *návrhu* vlády znamená 🔴.
 
@@ -67,6 +67,13 @@ hlidac.example.cz {
 
 Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a každou neděli v 18:00 krátké „běžím“. Na healthchecks.io (zdarma) si můžeš nastavit hlídání, jestli hlídač běží.
 
+## Útočiště, trasy a offline mapy
+
+- **`utocista`**: seznam útočišť podle preference (`code`, `name`, `trasa`, `pozn`). Doporučí se nejklidnější, při shodě to první v seznamu. Ke každému kódu patří zdroje: Meteoalarm, GDACS, Auswärtiges Amt, US State Dept a pravidla zpráv.
+- **`plan.trasy`**: trasy s body (`nazev`, `lat`, `lon`) a německými dálnicemi (`dalnice`), které se hlídají přes Autobahn API (uzavírky a kolony nad 30 minut). České silnice API nemají.
+- V dashboardu je u každé trasy **Uložit do offline map (GPX)**. Na iPhonu se otevře sdílení, kde zvolíš OsmAnd nebo Organic Maps. Druhé tlačítko otevře trasu v Google Mapách.
+- **Palivo v Německu** (volitelné): zaregistruj se zdarma na creativecommons.tankerkoenig.de a klíč dej do secretu `TANKERKOENIG_KEY`. Hlídač pak u bodů z `fuel.points` sleduje, kolik pump je otevřených a jestli nafta prudce nezdražila. API dovoluje jeden dotaz za minutu, takže se při každém běhu ptá na jeden bod.
+
 ## Úpravy konfigurace
 
 - **`regions`, `plan`**: názvy oblastí, cíl, trasa (zastávky odděluj šipkou →), záložní trasa, místo srazu.
@@ -74,7 +81,9 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 - **`meteoalarm.feeds`**: `area_regex` vybere kraj (malými písmeny bez diakritiky, např. `karlovarsk`, `praha`).
 - **`gdacs`, `auswaertiges_amt`, `us_state`**: sledované země a jejich oblast.
 - **`bfs_radiation`**: výřez mapy a prahy radiace. Běžné pozadí je 0,05–0,2 µSv/h, déšť ho krátce zvedne asi na 0,3.
-- **`news.rules`**: pravidla pro titulky. Regulární výrazy piš **malými písmeny bez diakritiky**. `single` = stupeň při 1 zdroji, `confirmed` = při ≥ 2 nezávislých zdrojích.
+- **`chmi_hydro`**: vodočty ČHMÚ (ID stanice z `opendata.chmi.cz/hydrology/now/metadata/meta1.json`). Hranice SPA se načtou samy. `levels` převádí SPA na stupeň hlídače (výchozí 2. SPA → 🟡, 3. SPA → 🟠, extrémní povodeň → 🔴), hlídá se i předpověď na 48 h a rychlé stoupání hladiny.
+- **`news.rules`**: pravidla pro titulky. Regulární výrazy piš **malými písmeny bez diakritiky**. `single` = stupeň při 1 zdroji, `confirmed` = při ≥ 2 nezávislých zdrojích, `feeds` = jen pro vybrané kanály.
+- **`notify.repeat_level3_minutes`**: jak často opakovat upozornění, dokud trvá 🔴 (0 = vypnuto).
 - **`notify.min_level`**: od jakého stupně posílat upozornění (výchozí 1).
 
 ## Zdroje
@@ -87,7 +96,10 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 | NOAA SWPC | geomagnetické bouře, které ohrožují rozvodné sítě |
 | Auswärtiges Amt, US State Dept | cestovní varování |
 | BfS ODL | měření radiace v Německu, výřez u českých hranic |
-| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, BBC | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
+| ČHMÚ (otevřená data) | vodočty, stupně povodňové aktivity a předpověď |
+| Autobahn GmbH | uzavírky a kolony na německých dálnicích tras |
+| Tankerkönig (CC BY 4.0) | otevřené pumpy a ceny nafty na trase (volitelné) |
+| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
 
 Nefunkční zdroj ukáže dashboard v části Zdroje. Když jich nefunguje většina, místo „Klid“ ukáže „Bez dat“.
 

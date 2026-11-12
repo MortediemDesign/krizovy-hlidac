@@ -46,9 +46,23 @@ CONFIG_PATH = Path(os.environ.get("HLIDAC_CONFIG", str(BASE / "config.json")))
 UA = f"KrizovyHlidac/{VERSION} (+https://github.com/; osobni varovny system)"
 
 LEVELS = {0: ("KLID", "🟢"), 1: ("SLEDUJ", "🟡"), 2: ("PŘIPRAV SE", "🟠"), 3: ("ODJEĎ", "🔴")}
-REGION_ORDER = ["CZ", "DE", "EU", "ES"]
-HOME_REGIONS = ("CZ", "DE", "EU")  # Španělsko je útočiště – do celkového stupně se nepočítá
-REGION_SHORT = {"CZ": "CZ", "DE": "DE", "EU": "EU", "ES": "Útočiště ES"}
+HOME_REGIONS = ("CZ", "DE", "EU")  # útočiště se do celkového stupně nepočítají
+
+
+def refuges(cfg) -> list:
+    """Útočiště v pořadí podle preference. Starší konfigurace bez seznamu = jen ES."""
+    out = cfg.get("utocista")
+    if out:
+        return out
+    return [{"code": "ES", "name": cfg.get("regions", {}).get("ES", "Španělsko")}] if "ES" in cfg.get("regions", {}) else []
+
+
+def region_order(cfg) -> list:
+    return list(HOME_REGIONS) + [r["code"] for r in refuges(cfg)]
+
+
+def region_short(code: str) -> str:
+    return code if code in HOME_REGIONS else f"Útočiště {code}"
 
 DEFAULT_ACTIONS = {
     "0": ["Zásoby doma průběžně doplňuj.", "Drž nádrž aspoň napůl plnou."],
@@ -289,7 +303,7 @@ def src_gdacs(cfg, fetch):
         alert = child_text(item, "alertlevel")
         codes = set(re.findall(r"[A-Z]{3}", child_text(item, "iso3").upper()))
         for region in {countries[c] for c in codes if c in countries}:
-            lvl = ({"Red": 2, "Orange": 1} if region in ("CZ", "DE", "ES") else {"Red": 1}).get(alert, 0)
+            lvl = ({"Red": 2, "Orange": 1} if region != "EU" else {"Red": 1}).get(alert, 0)
             if lvl:
                 guid = child_text(item, "guid") or child_text(item, "link")
                 events.append(make_event("GDACS", region, lvl, child_text(item, "title"),
@@ -337,7 +351,7 @@ def src_auswaertiges_amt(cfg, fetch):
         if not isinstance(v, dict) or v.get("countryCode") not in countries:
             continue
         region = countries[v["countryCode"]]
-        home = region in ("CZ", "DE", "ES")
+        home = region != "EU"
         if v.get("warning"):
             lvl, what = (3 if home else 2), "cestovní varování pro celou zemi"
         elif v.get("partialWarning"):
@@ -366,7 +380,7 @@ def src_us_state(cfg, fetch):
             continue
         region, n = name_to_region[m.group(1).lower()], int(m.group(2))
         found.append(f"{m.group(1)} L{n}")
-        home = region in ("CZ", "DE", "ES")
+        home = region != "EU"
         lvl = {4: 3 if home else 2, 3: 2 if home else 1}.get(n, 0)
         if lvl:
             events.append(make_event("US State Dept", region, lvl, title, url=child_text(item, "link"),
@@ -409,6 +423,172 @@ def src_bfs(cfg, fetch):
     return events, f"max {mx:.2f} µSv/h u hranic ({len(near)} stanic), {len(allv)} v DE"
 
 
+CHMI = "https://opendata.chmi.cz/hydrology/now"
+SPA_NAMES = {1: "1. SPA – bdělost", 2: "2. SPA – pohotovost", 3: "3. SPA – ohrožení", 4: "extrémní povodeň"}
+
+
+def _chmi_stage(value, limits):
+    stage = 0
+    for i, lim in enumerate(limits, start=1):
+        if lim is not None and value is not None and value >= lim:
+            stage = i
+    return stage
+
+
+def src_chmi(cfg, fetch, mem):
+    """Vodočty ČHMÚ: aktuální stupeň povodňové aktivity, předpověď a rychlé stoupání hladiny."""
+    c = cfg["chmi_hydro"]
+    now = utcnow()
+    meta = mem.get("meta")
+    if not meta or now - (parse_date(mem.get("meta_time")) or now - timedelta(days=2)) > timedelta(hours=24):
+        raw = json.loads(fetch(f"{CHMI}/metadata/meta1.json"))["data"]["data"]
+        header = [h.strip() for h in raw["header"].split(",")]
+        wanted = {s["id"] for s in c["stations"]}
+        meta = {}
+        for row in raw["values"]:
+            r = dict(zip(header, row))
+            if r.get("objID") in wanted:
+                meta[r["objID"]] = {k: r.get(k) for k in ("STATION_NAME", "STREAM_NAME", "SPA1H", "SPA2H", "SPA3H", "SPA4H",
+                                                          "SPA1Q", "SPA2Q", "SPA3Q", "SPA4Q")}
+        mem["meta"], mem["meta_time"] = meta, iso(now)
+
+    spa_level = {int(k): v for k, v in c.get("levels", {"2": 1, "3": 2, "4": 3}).items()}
+    rise_cm, rise_h = c.get("rise_cm", 40), c.get("rise_hours", 3)
+    events, rivers = [], []
+    for s in c["stations"]:
+        m = meta.get(s["id"], {})
+        obj = json.loads(fetch(f"{CHMI}/data/{s['id']}.json"))["objList"][0]
+        ts = {t["tsConID"]: [(parse_date(d["dt"]), d["value"]) for d in t.get("tsData", []) if d.get("value") is not None]
+              for t in obj.get("tsList", [])}
+        use_h = any(m.get(f"SPA{i}H") is not None for i in (1, 2, 3))
+        key, unit = ("H", "cm") if use_h else ("Q", "m³/s")
+        limits = [m.get(f"SPA{i}{key}") for i in (1, 2, 3, 4)]
+        series = ts.get(key) or []
+        if not series:
+            continue
+        t_now, v_now = series[-1]
+        stage = _chmi_stage(v_now, limits)
+        fc = [(t, v) for t, v in ts.get(f"{key}_F", []) if t and t > now and t - now <= timedelta(hours=48)]
+        fc_max = max(fc, key=lambda x: x[1]) if fc else None
+        fc_stage = _chmi_stage(fc_max[1], limits) if fc_max else 0
+        h = ts.get("H") or []
+        past = [v for t, v in h if t and t_now and timedelta(0) < t_now - t <= timedelta(hours=rise_h)]
+        rise = (h[-1][1] - min(past)) if (h and past) else 0
+        name = s.get("name") or f"{m.get('STATION_NAME')} – {m.get('STREAM_NAME')}"
+        url = "https://hydro.chmi.cz/hppsoldv/hpps_main.php"
+        lvl_now, lvl_fc = spa_level.get(stage, 0), spa_level.get(fc_stage, 0)
+        if lvl_now:
+            events.append(make_event("ČHMÚ vodočty", s.get("region", "CZ"), lvl_now,
+                                     f"{name}: {SPA_NAMES[stage]} ({v_now} {unit})", url=url,
+                                     eid=f"chmi:{s['id']}:now:{stage}", when=t_now))
+        if lvl_fc > lvl_now:
+            events.append(make_event("ČHMÚ vodočty", s.get("region", "CZ"), lvl_fc,
+                                     f"{name}: předpověď {SPA_NAMES[fc_stage]} ({fc_max[1]} {unit}, "
+                                     f"{fc_max[0].astimezone(local_tz(cfg)).strftime('%d.%m. %H:%M')})", url=url,
+                                     eid=f"chmi:{s['id']}:fc:{fc_stage}", when=now))
+        if rise >= rise_cm and not lvl_now and not lvl_fc:
+            events.append(make_event("ČHMÚ vodočty", s.get("region", "CZ"), 1,
+                                     f"{name}: hladina stoupla o {rise:.0f} cm za {rise_h} h (teď {h[-1][1]} cm)", url=url,
+                                     eid=f"chmi:{s['id']}:rise", when=t_now))
+        rivers.append({"name": name, "value": v_now, "unit": unit, "time": iso(t_now), "stage": stage,
+                       "limits": limits[:3], "forecast_max": fc_max[1] if fc_max else None, "forecast_stage": fc_stage,
+                       "rise": round(rise) if h else None})
+    info = ", ".join(f"{r['name'].split(' –')[0]} {r['value']} {r['unit']}" for r in rivers)
+    return events, info or "žádná data", {"rivers": rivers}
+
+
+AUTOBAHN = "https://verkehr.autobahn.de/o/autobahn"
+
+
+def route_roads(cfg) -> list:
+    roads = []
+    for t in cfg.get("plan", {}).get("trasy", []):
+        for r in t.get("dalnice", []):
+            if r not in roads:
+                roads.append(r)
+    return roads
+
+
+def src_route(cfg, fetch):
+    """Uzavírky a kolony na německých dálnicích tvých tras (Autobahn GmbH)."""
+    c = cfg.get("route_status", {})
+    min_delay = c.get("min_delay_minutes", 30)
+    roads = route_roads(cfg)
+
+    def one(road):
+        out = {"closures": [], "jams": []}
+        for item in json.loads(fetch(f"{AUTOBAHN}/{road}/services/closure", timeout=15)).get("closure", []):
+            if item.get("future") is True:
+                continue
+            out["closures"].append({"title": item.get("title", ""), "dir": (item.get("subtitle") or "").strip(),
+                                    "blocked": str(item.get("isBlocked")).lower() == "true"})
+        for item in json.loads(fetch(f"{AUTOBAHN}/{road}/services/warning", timeout=15)).get("warning", []):
+            try:
+                delay = int(float(item.get("delayTimeValue") or 0))
+            except (TypeError, ValueError):
+                delay = 0
+            if delay >= min_delay or str(item.get("isBlocked")).lower() == "true":
+                out["jams"].append({"title": item.get("title", ""), "dir": (item.get("subtitle") or "").strip(),
+                                    "delay": delay, "blocked": str(item.get("isBlocked")).lower() == "true"})
+        out["jams"].sort(key=lambda j: -j["delay"])
+        out["problem"] = any(x["blocked"] for x in out["closures"] + out["jams"]) or any(j["delay"] >= 60 for j in out["jams"])
+        return road, out
+
+    result, errors = {}, []
+    with cf.ThreadPoolExecutor(max_workers=4) as ex:
+        for fut in [ex.submit(one, r) for r in roads]:
+            try:
+                road, out = fut.result()
+                result[road] = out
+            except Exception as e:
+                errors.append(f"{type(e).__name__}")
+    if roads and not result:
+        raise RuntimeError("žádná dálnice neodpověděla: " + ", ".join(errors))
+    bad = [r for r, o in result.items() if o["problem"]]
+    info = f"{len(result)} dálnic, komplikace: {', '.join(bad) or 'žádné'}"
+    return [], info, {"roads": result, "time": iso(utcnow())}
+
+
+def src_fuel(cfg, fetch, mem):
+    """Palivo v Německu (Tankerkönig, zdarma s klíčem). Každý běh jeden bod trasy – limit API je 1 dotaz/min."""
+    c = cfg["fuel"]
+    key = os.environ.get("TANKERKOENIG_KEY", "")
+    if not key:
+        return [], "vypnuto – chybí klíč TANKERKOENIG_KEY", {"points": {}}
+    points = c["points"]
+    i = mem.get("i", 0) % len(points)
+    mem["i"] = i + 1
+    p = points[i]
+    url = (f"https://creativecommons.tankerkoenig.de/json/list.php?lat={p['lat']}&lng={p['lon']}"
+           f"&rad={c.get('radius_km', 10)}&type=all&apikey={key}")
+    data = json.loads(fetch(url))
+    if not data.get("ok"):
+        raise RuntimeError(f"Tankerkönig: {data.get('message', 'chyba')}")
+    st = data.get("stations", [])
+    open_st = [s for s in st if s.get("isOpen")]
+    prices = [s["diesel"] for s in open_st if isinstance(s.get("diesel"), (int, float)) and s["diesel"] > 0]
+    avg = round(sum(prices) / len(prices), 3) if prices else None
+    pts = mem.setdefault("points", {})
+    pm = pts.setdefault(p["name"], {"hist": []})
+    if avg:
+        pm["hist"] = (pm["hist"] + [avg])[-400:]
+    hist = sorted(pm["hist"][:-1])
+    base = hist[len(hist) // 2] if len(hist) >= 20 else None
+    pm.update(time=iso(utcnow()), open=len(open_st), total=len(st), diesel=avg, baseline=base)
+    events = []
+    hour = utcnow().astimezone(local_tz(cfg)).hour
+    for name, m in pts.items():
+        if m.get("total", 0) >= 5 and 7 <= hour <= 20 and m["open"] / m["total"] < c.get("min_open_share", 0.4):
+            events.append(make_event("Palivo", "DE", 1, f"Zavřené pumpy u {name}: otevřeno {m['open']} z {m['total']}",
+                                     url="https://creativecommons.tankerkoenig.de/", eid=f"fuel:{name}:closed"))
+        if m.get("baseline") and m.get("diesel") and m["diesel"] >= m["baseline"] * c.get("price_jump", 1.25):
+            pct = round((m["diesel"] / m["baseline"] - 1) * 100)
+            events.append(make_event("Palivo", "DE", 1, f"Nafta u {name} dražší o {pct} % ({m['diesel']:.2f} €)",
+                                     url="https://creativecommons.tankerkoenig.de/", eid=f"fuel:{name}:price"))
+    summary = {n: {k: m.get(k) for k in ("time", "open", "total", "diesel", "baseline")} for n, m in pts.items()}
+    return events, f"{p['name']}: otevřeno {len(open_st)}/{len(st)}, nafta {avg or '?'} €", {"points": summary}
+
+
 SOURCES = {
     "nina":           ("NINA – místa staveb a hranice", src_nina, "nina"),
     "nina_national":  ("NINA – celé Německo", src_nina_national, "nina_national"),
@@ -418,6 +598,9 @@ SOURCES = {
     "aa":             ("Auswärtiges Amt", src_auswaertiges_amt, "auswaertiges_amt"),
     "us_state":       ("US State Dept", src_us_state, "us_state"),
     "bfs":            ("BfS – radiace", src_bfs, "bfs_radiation"),
+    "chmi":           ("ČHMÚ – vodočty", src_chmi, "chmi_hydro"),
+    "route":          ("Dálnice na trase (DE)", src_route, "route_status"),
+    "fuel":           ("Palivo na trase (DE)", src_fuel, "fuel"),
 }
 
 
@@ -476,6 +659,8 @@ def run_news(cfg, fetch, state, now):
                     if date and now - date > max_age:
                         continue
                     for r in match_rules(title, rules):
+                        if r.get("feeds") and feed["id"] not in r["feeds"]:   # pravidlo jen pro určité kanály
+                            continue
                         key = f"{r['id']}|{feed['id']}|{short_hash(norm(title))}"
                         if key not in hits:
                             hits[key] = {"rule": r["id"], "feed": feed["id"], "feed_name": feed["name"],
@@ -561,17 +746,67 @@ def send_notification(title: str, message: str, level: int, url: str = "") -> li
     return sent
 
 
-def compose_alert(cfg, new_events, overall):
+def recommend_refuge(cfg, region_levels):
+    """Nejklidnější útočiště; při shodě rozhoduje pořadí v konfiguraci (preference)."""
+    refs = refuges(cfg)
+    if not refs:
+        return None
+    _, best = min(enumerate(refs), key=lambda x: (region_levels.get(x[1]["code"], 0), x[0]))
+    lvl = region_levels.get(best["code"], 0)
+    return {"code": best["code"], "name": best.get("name", best["code"]), "level": lvl, "label": LEVELS[lvl][0],
+            "emoji": LEVELS[lvl][1], "trasa": best.get("trasa"), "pozn": best.get("pozn", ""), "calm": lvl <= 1}
+
+
+def route_issues(cfg, route_extra, trasa_id=None, limit=4) -> list:
+    """Krátké řádky o komplikacích na dálnicích dané trasy (nebo všech tras)."""
+    roads = (route_extra or {}).get("roads", {})
+    trasy = cfg.get("plan", {}).get("trasy", [])
+    names = []
+    for t in trasy:
+        if trasa_id is None or t.get("id") == trasa_id:
+            names += [d for d in t.get("dalnice", []) if d not in names]
+    out = []
+    for d in names:
+        r = roads.get(d) or {}
+        for c in r.get("closures", []):
+            if c.get("blocked"):
+                out.append(f"{c['title']} uzavřeno ({c['dir']})".replace(" ()", ""))
+        for j in r.get("jams", []):
+            out.append(f"{j['title']}: zdržení {j['delay']} min ({j['dir']})".replace(" ()", ""))
+    return out[:limit]
+
+
+def alert_context(cfg, state, region_levels):
+    rec = recommend_refuge(cfg, region_levels)
+    route = state.get("extras", {}).get("route")
+    return {"recommended": rec, "route_issues": route_issues(cfg, route, rec.get("trasa") if rec else None)}
+
+
+def context_lines(ctx) -> list:
+    lines = []
+    rec = (ctx or {}).get("recommended")
+    if rec:
+        if rec["calm"]:
+            lines.append(f"Doporučený cíl: {rec['name']} ({rec['emoji']} {rec['label'].lower()})")
+        else:
+            lines.append(f"Pozor: žádné útočiště není klidné, nejlepší je {rec['name']} ({rec['emoji']} {rec['label'].lower()})")
+    issues = (ctx or {}).get("route_issues") or []
+    if issues:
+        lines.append("Na trase: " + "; ".join(issues))
+    return lines
+
+
+def compose_alert(cfg, new_events, overall, ctx=None):
     top = max(e["level"] for e in new_events)
     name, emoji = LEVELS[top]
     regions = []
     for e in sorted(new_events, key=lambda e: -e["level"]):
-        if e["level"] == top and REGION_SHORT[e["region"]] not in regions:
-            regions.append(REGION_SHORT[e["region"]])
+        if e["level"] == top and region_short(e["region"]) not in regions:
+            regions.append(region_short(e["region"]))
     title = f"{emoji} {name}: {', '.join(regions)}"
     lines = []
     for e in sorted(new_events, key=lambda e: -e["level"])[:6]:
-        lines.append(f"{LEVELS[e['level']][1]} [{REGION_SHORT[e['region']]}] {e['title']} ({e['source']})")
+        lines.append(f"{LEVELS[e['level']][1]} [{region_short(e['region'])}] {e['title']} ({e['source']})")
     if len(new_events) > 6:
         lines.append(f"… a další ({len(new_events) - 6})")
     on, oe = LEVELS[overall]
@@ -580,6 +815,8 @@ def compose_alert(cfg, new_events, overall):
     acts = (cfg.get("actions") or DEFAULT_ACTIONS).get(str(top), [])
     if top >= 1 and acts:
         lines.append("Co teď: " + " ".join(acts[:3]))
+    if top >= 2:
+        lines += context_lines(ctx)
     url = cfg.get("dashboard_url") or new_events[0].get("url", "")
     return title, "\n".join(lines), top, url
 
@@ -624,8 +861,16 @@ def run_cycle(cfg, state, fetch=http_fetch, do_notify=True, now=None):
     all_events = []
 
     enabled = {k: v for k, v in SOURCES.items() if cfg.get(v[2], {}).get("enabled", False)}
+    src_mem = state.setdefault("source_memory", {})     # vlastní paměť zdroje (rotace, průměry)
+    extras = state.setdefault("extras", {})             # strukturovaná data pro dashboard (vodočty, trasa)
+
+    def call(key, fn):
+        if fn.__code__.co_argcount >= 3:
+            return fn(cfg, fetch, src_mem.setdefault(key, {}))
+        return fn(cfg, fetch)
+
     with cf.ThreadPoolExecutor(max_workers=8) as ex:
-        futs = {ex.submit(fn, cfg, fetch): key for key, (_, fn, _) in enabled.items()}
+        futs = {ex.submit(call, key, fn): key for key, (_, fn, _) in enabled.items()}
         results = {}
         for fut in cf.as_completed(futs):
             key = futs[fut]
@@ -639,7 +884,9 @@ def run_cycle(cfg, state, fetch=http_fetch, do_notify=True, now=None):
         st["label"] = label
         kind, val = results[key]
         if kind == "ok":
-            events, info = val
+            events, info = val[0], val[1]
+            if len(val) > 2:
+                extras[key] = val[2]
             st.update(ok=True, last_ok=iso(now), info=info, error="")
             st.pop("fail_since", None)
             st.pop("fail_notified", None)
@@ -673,6 +920,7 @@ def run_cycle(cfg, state, fetch=http_fetch, do_notify=True, now=None):
     for key in list(src_state):     # vypnuté zdroje z přehledu vyřaď
         if key != "news" and key not in enabled:
             src_state.pop(key)
+            extras.pop(key, None)
 
     # sloučit duplicity (stejné id) – nechat nejvyšší stupeň
     merged = {}
@@ -681,7 +929,7 @@ def run_cycle(cfg, state, fetch=http_fetch, do_notify=True, now=None):
             merged[e["id"]] = e
     events = sorted(merged.values(), key=lambda e: (-e["level"], e["region"], e["title"]))
 
-    region_levels = {r: max([e["level"] for e in events if e["region"] == r] or [0]) for r in REGION_ORDER}
+    region_levels = {r: max([e["level"] for e in events if e["region"] == r] or [0]) for r in region_order(cfg)}
     overall = max(region_levels[r] for r in HOME_REGIONS)
 
     if do_notify:
@@ -703,16 +951,23 @@ def handle_notifications(cfg, state, events, overall, region_levels, now):
     prev_active = set(state.get("prev_active", []))
     prev_overall = state.get("prev_overall", 0)
 
+    ctx = alert_context(cfg, state, region_levels)
+    url_dash = cfg.get("dashboard_url", "")
+    sent_l3 = False
+
     if not state.get("initialized"):
         on, oe = LEVELS[overall]
         lines = [f"Celkový stav doma: {oe} {on}"]
-        for r in REGION_ORDER:
+        for r in region_order(cfg):
             n, e = LEVELS[region_levels[r]]
             lines.append(f"{e} {cfg['regions'].get(r, r)}: {n}")
         bad = [s.get("label", k) for k, s in state.get("sources", {}).items() if not s.get("ok")]
         if bad:
             lines.append("⚠️ Nefunguje: " + ", ".join(bad))
-        notify(state, cfg, "▶️ Krizový hlídač spuštěn", "\n".join(lines), 0, cfg.get("dashboard_url", ""))
+        if overall >= 2:
+            lines += context_lines(ctx)
+        notify(state, cfg, "▶️ Krizový hlídač spuštěn", "\n".join(lines), overall, url_dash)
+        sent_l3 = overall >= 3
         for i in active:
             notified[i] = iso(now)
         state["initialized"] = True
@@ -723,14 +978,31 @@ def handle_notifications(cfg, state, events, overall, region_levels, now):
             if i not in prev_active and not (last and now - last < renotify):
                 new.append(e)
         if new:
-            title, msg, lvl, url = compose_alert(cfg, new, overall)
+            title, msg, lvl, url = compose_alert(cfg, new, overall, ctx)
             notify(state, cfg, title, msg, lvl, url)
+            sent_l3 = lvl >= 3
             for e in new:
                 notified[e["id"]] = iso(now)
         elif overall < prev_overall:
             on, oe = LEVELS[overall]
             notify(state, cfg, f"⬇️ Zlepšení: {oe} {on}",
-                   f"Celkový stav doma klesl z {LEVELS[prev_overall][0]} na {on}.", 0, cfg.get("dashboard_url", ""))
+                   f"Celkový stav doma klesl z {LEVELS[prev_overall][0]} na {on}.", 0, url_dash)
+
+    # stupeň Odjeď trvá – připomínat, dokud nepomine (ntfy na iPhonu neprobudí, opakování ano)
+    repeat = nc.get("repeat_level3_minutes", 30)
+    if sent_l3:
+        state["last_l3"] = iso(now)
+    elif overall >= 3 and repeat:
+        last = parse_date(state.get("last_l3"))
+        if not last or now - last >= timedelta(minutes=repeat) - timedelta(seconds=30):
+            top = [e for e in events if e["level"] >= 3 and e["region"] in HOME_REGIONS][:3]
+            lines = [f"🔴 [{region_short(e['region'])}] {e['title']}" for e in top]
+            lines += [""] + context_lines(ctx)
+            acts = (cfg.get("actions") or DEFAULT_ACTIONS).get("3", [])
+            if acts:
+                lines.append("Co teď: " + " ".join(acts[:2]))
+            notify(state, cfg, "🔴 Stále ODJEĎ", "\n".join(lines).strip(), 3, url_dash)
+            state["last_l3"] = iso(now)
 
     # nefunkční zdroje – jedno upozornění
     fail_limit = timedelta(hours=nc.get("source_fail_hours", 6))
@@ -763,10 +1035,21 @@ def handle_notifications(cfg, state, events, overall, region_levels, now):
 def build_status(cfg, state, events, region_levels, overall, now):
     def lv(n):
         return {"level": n, "label": LEVELS[n][0], "emoji": LEVELS[n][1]}
+    refs = {r["code"]: r for r in refuges(cfg)}
+    rec = recommend_refuge(cfg, region_levels)
     regions = []
-    for r in REGION_ORDER:
-        regions.append({"code": r, "name": cfg["regions"].get(r, r), "refuge": r not in HOME_REGIONS,
-                        **lv(region_levels[r]), "events": [e for e in events if e["region"] == r][:5]})
+    for r in region_order(cfg):
+        name = refs[r].get("name") if r in refs else None
+        regions.append({"code": r, "name": name or cfg["regions"].get(r, r), "refuge": r not in HOME_REGIONS,
+                        "recommended": bool(rec and rec["code"] == r), "note": refs.get(r, {}).get("pozn", ""),
+                        **lv(region_levels.get(r, 0)), "events": [e for e in events if e["region"] == r][:5]})
+    extras = state.get("extras", {})
+    route = extras.get("route") or {}
+    trasy = []
+    for t in cfg.get("plan", {}).get("trasy", []):
+        roads = [{"road": d, **(route.get("roads", {}).get(d) or {"closures": [], "jams": [], "problem": None})}
+                 for d in t.get("dalnice", [])]
+        trasy.append({**t, "roads": roads, "issues": route_issues(cfg, route, t.get("id"), limit=8)})
     sources = []
     for key, st in state.get("sources", {}).items():
         sources.append({"key": key, "label": st.get("label", key), "ok": st.get("ok", False),
@@ -780,7 +1063,10 @@ def build_status(cfg, state, events, region_levels, overall, now):
         "version": VERSION, "generated": iso(now), "interval_minutes": interval, "stale_after_minutes": stale,
         "blind": bool(sources) and ok * 2 < len(sources),   # většina zdrojů mlčí → „Klid“ by lhal
         "overall": lv(overall), "regions": regions, "events": events, "sources": sources,
-        "actions": cfg.get("actions") or DEFAULT_ACTIONS, "plan": cfg.get("plan", {}),
+        "actions": cfg.get("actions") or DEFAULT_ACTIONS, "plan": {**cfg.get("plan", {}), "trasy": trasy},
+        "recommended": rec, "route_time": route.get("time", ""),
+        "rivers": (extras.get("chmi") or {}).get("rivers", []),
+        "fuel": (extras.get("fuel") or {}).get("points", {}),
         "history": list(reversed(state.get("history", [])))[:20],
         "channels": channels_configured(),
     }
@@ -944,7 +1230,22 @@ def demo_status(cfg):
         make_event("NINA", "DE", 1, "Gefahreninformation: Großbrand, Rauchentwicklung (Dresden)",
                    url="https://warnung.bund.de/", eid="demo4"),
     ]
-    rl = {r: max([e["level"] for e in events if e["region"] == r] or [0]) for r in REGION_ORDER}
+    events.append(make_event("Zprávy", "ES", 2, "Krize ve Španělsku (útočiště) (potvrzeno): Gran apagón en toda España",
+                             url="https://example.org", eid="demo5"))
+    state["extras"] = {
+        "chmi": {"rivers": [
+            {"name": "Louny – Ohře", "value": 182, "unit": "cm", "time": iso(now), "stage": 0, "limits": [400, 440, 490],
+             "forecast_max": 190, "forecast_stage": 0, "rise": 12}]},
+        "route": {"time": iso(now), "roads": {
+            "A6": {"closures": [{"title": "A6 | Schwetzingen/Hockenheim - Walldorf", "dir": "Mannheim -> Heilbronn", "blocked": True}],
+                   "jams": [], "problem": True},
+            "A5": {"closures": [], "jams": [], "problem": False},
+            "A3": {"closures": [], "jams": [{"title": "A3 | Würzburg - Wertheim", "dir": "Frankfurt -> Nürnberg", "delay": 45,
+                                             "blocked": False}], "problem": False},
+            "A4": {"closures": [], "jams": [], "problem": False}}},
+        "fuel": {"points": {"Norimberk": {"time": iso(now), "open": 23, "total": 25, "diesel": 1.629, "baseline": 1.61}}},
+    }
+    rl = {r: max([e["level"] for e in events if e["region"] == r] or [0]) for r in region_order(cfg)}
     overall = max(rl[r] for r in HOME_REGIONS)
     return build_status(cfg, state, events, rl, overall, now)
 

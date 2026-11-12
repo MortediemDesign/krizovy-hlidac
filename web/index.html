@@ -87,6 +87,28 @@ h2{font:700 1.65rem/1.1 var(--cond);margin:0 0 12px}
 .r-name{font-weight:600}
 .r-level{font:700 1.15rem/1.3 var(--cond);text-align:right}
 .r-top{grid-column:2 / 4;color:var(--muted);font-size:.95rem;margin-top:2px}
+.dest{margin:12px 0 0;font:700 1.35rem/1.2 var(--cond)}
+.rec-badge{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:4px;background:var(--ink);color:var(--paper);font:600 .78rem/1.5 var(--text);vertical-align:2px}
+.rivers{list-style:none;margin:0;padding:0}
+.rivers li{display:grid;grid-template-columns:14px 1fr auto;column-gap:12px;padding:11px 0;border-top:1px solid var(--line)}
+.rivers li:first-child{border-top:0}
+.rv-val{font:700 1.15rem/1.3 var(--cond);text-align:right}
+.rv-info{grid-column:2 / 4;color:var(--muted);font-size:.92rem;margin-top:2px}
+.attr{color:var(--muted);font-size:.82rem;margin:8px 0 18px}
+.rec-line{margin:0 0 6px}
+.muted{color:var(--muted)}
+.trasa{padding:12px 0}
+.trasa summary{font-size:1.2rem}
+.trasa .route{margin-top:14px}
+.road-state{display:flex;gap:10px;align-items:flex-start;margin:0 0 6px;font-size:.95rem}
+.road-state .lamp{flex:none;margin-top:4px}
+.issues{margin:0 0 10px;padding-left:24px;font-size:.95rem}
+.issues li{margin:3px 0}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
+.btn{display:inline-block;font:600 .95rem var(--text);padding:10px 14px;border-radius:6px;border:1px solid var(--line);background:var(--raise);color:var(--ink);text-decoration:none;cursor:pointer}
+.sub{font-weight:600;margin:16px 0 4px}
+.fuel{list-style:none;margin:0;padding:0;font-size:.95rem}
+.fuel li{padding:4px 0}
 .refuge-head{margin:14px 0 0;padding-top:12px;border-top:2px solid var(--line);color:var(--muted);font-size:.95rem}
 
 /* události */
@@ -111,7 +133,7 @@ h2{font:700 1.65rem/1.1 var(--cond);margin:0 0 12px}
 
 details{padding:16px 0;border-bottom:1px solid var(--line)}
 details:last-of-type{border-bottom:0}
-summary{font:700 1.35rem/1.2 var(--cond);cursor:pointer;list-style-position:outside}
+summary{font:700 1.35rem/1.2 var(--cond);cursor:pointer;list-style-position:inside}
 summary small{font:400 .95rem var(--text);color:var(--muted);margin-left:6px}
 .src{list-style:none;margin:10px 0 0;padding:0;font-size:.95rem}
 .src li{display:grid;grid-template-columns:14px 1fr;column-gap:10px;padding:7px 0}
@@ -132,6 +154,7 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     <div class="scale" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
     <h1 class="level" id="level">Načítám</h1>
     <p class="reason" id="reason">Zjišťuji aktuální stav.</p>
+    <p class="dest" id="dest" hidden></p>
     <p class="meta" id="meta"></p>
     <p class="stale" id="stale" hidden></p>
     <form class="unlock" id="unlock" hidden>
@@ -153,6 +176,12 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     <ul class="regions" id="regions"></ul>
     <p class="refuge-head" id="refuge-head">Útočiště</p>
     <ul class="regions" id="refuge"></ul>
+  </section>
+
+  <section aria-labelledby="h-riv" id="s-riv" hidden>
+    <h2 id="h-riv">Vodočty</h2>
+    <ul class="rivers" id="rivers"></ul>
+    <p class="attr">Data: ČHMÚ, SPA = stupeň povodňové aktivity.</p>
   </section>
 
   <section aria-labelledby="h-ev">
@@ -215,6 +244,34 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     return h < 48 ? `před ${h} h` : `před ${Math.round(h/24)} dny`;
   };
 
+  const xmlEsc = x => String(x).replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c]));
+  function gpxText(t, pts){
+    const pt = (tag, b) => `<${tag} lat="${b.lat}" lon="${b.lon}"><name>${xmlEsc(b.nazev)}</name></${tag}>`;
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Krizovy hlidac" xmlns="http://www.topografix.com/GPX/1/1">\n` +
+      `<metadata><name>${xmlEsc(t.nazev)}</name></metadata>\n` + pts.map(b => pt("wpt", b)).join("\n") +
+      `\n<rte><name>${xmlEsc(t.nazev)}</name>\n` + pts.map(b => pt("rtept", b)).join("\n") + `\n</rte>\n</gpx>\n`;
+  }
+  async function saveGpx(t, pts){
+    const name = `${t.id || "trasa"}.gpx`;
+    const file = new File([gpxText(t, pts)], name, {type: "application/gpx+xml"});
+    if (navigator.canShare && navigator.canShare({files: [file]})) {
+      try { await navigator.share({files: [file], title: t.nazev}); return; }
+      catch (e) { if (e.name === "AbortError") return; }
+    }
+    const a = el("a", {href: URL.createObjectURL(file), download: name});
+    document.body.append(a); a.click(); a.remove();
+  }
+  function gmaps(pts){
+    const f = b => `${b.lat},${b.lon}`;
+    const u = new URL("https://www.google.com/maps/dir/");
+    u.searchParams.set("api", "1");
+    u.searchParams.set("origin", f(pts[0]));
+    u.searchParams.set("destination", f(pts[pts.length - 1]));
+    if (pts.length > 2) u.searchParams.set("waypoints", pts.slice(1, -1).slice(0, 9).map(f).join("|"));
+    u.searchParams.set("travelmode", "driving");
+    return u.toString();
+  }
+
   function render(s){
     last = s;
     const o = s.overall.level;
@@ -222,11 +279,16 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     document.querySelectorAll(".scale i").forEach((i,n) => i.classList.toggle("on", n <= o));
     $("level").textContent = LEVEL_TEXT[o];
     document.title = `${LEVEL_TEXT[o]} – Krizový hlídač`;
-    const home = s.events.filter(e => e.region !== "ES");
+    const refugeCodes = new Set(s.regions.filter(r => r.refuge).map(r => r.code));
+    const home = s.events.filter(e => !refugeCodes.has(e.region));
+    const rec = s.recommended;
+    $("dest").hidden = !(o >= 2 && rec);
+    if (rec) $("dest").textContent = rec.calm ? `Doporučený cíl: ${rec.name}` : `Žádné útočiště není klidné, nejlepší je ${rec.name}`;
     $("reason").textContent = o === 0
       ? "Doma ani v okolí se neděje nic, kvůli čemu bys měl jednat."
       : (home[0] ? home[0].title : "");
     if (s.blind && o === 0) {
+      $("dest").hidden = true;
       $("placard").dataset.level = "x";
       $("level").textContent = "Bez dat";
       $("reason").textContent = "Většina zdrojů teď neodpovídá, takže klid nejde potvrdit. Seznam je dole v části Zdroje.";
@@ -253,11 +315,12 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     // oblasti
     const row = r => {
       const top = r.events[0];
+      const quiet = r.note ? `Bez varování. ${r.note}` : "Bez varování";
       return el("li", null,
         el("span", {class:"lamp", "data-level":r.level, "aria-hidden":"true"}),
-        el("span", {class:"r-name", text:r.name}),
+        el("span", {class:"r-name"}, r.name, r.refuge && r.recommended ? el("span", {class:"rec-badge", text:"doporučeno"}) : null),
         el("span", {class:"r-level", text:LEVEL_TEXT[r.level]}),
-        el("span", {class:"r-top", text: top ? top.title : "Bez varování"}));
+        el("span", {class:"r-top", text: top ? top.title : quiet}));
     };
     $("regions").replaceChildren(...s.regions.filter(r => !r.refuge).map(row));
     const refuge = s.regions.filter(r => r.refuge);
@@ -279,13 +342,67 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
         e.detail ? el("span", {class:"ev-detail", text:e.detail}) : null));
     });
 
+    // vodočty
+    const riv = s.rivers || [];
+    $("s-riv").hidden = !riv.length;
+    const SPA = ["bez povodňové aktivity", "1. SPA – bdělost", "2. SPA – pohotovost", "3. SPA – ohrožení", "extrémní povodeň"];
+    $("rivers").replaceChildren(...riv.map(r => {
+      const info = [SPA[r.stage] || ""];
+      const next = (r.limits || []).find(x => x != null && x > r.value);
+      if (!r.stage && next != null) info[0] += ` (1. SPA od ${next} ${r.unit})`;
+      if (r.rise != null && r.rise >= 5) info.push(`stoupá o ${r.rise} cm za 3 h`);
+      if (r.forecast_max != null) info.push(`předpověď do 48 h: max ${r.forecast_max} ${r.unit}`);
+      return el("li", null,
+        el("span", {class:"lamp", "data-level": Math.min(3, r.stage || 0), "aria-hidden":"true"}),
+        el("span", {class:"r-name", text:r.name}),
+        el("span", {class:"rv-val", text:`${r.value} ${r.unit}`}),
+        el("span", {class:"rv-info", text: info.join(", ") + (r.time ? `, ${fmtTime(r.time)}` : "")}));
+    }));
+
     // plán
     const p = s.plan || {};
     const plan = $("plan"); plan.replaceChildren();
-    if (p.cil) plan.append(el("p", null, "Cíl: ", el("strong", {text:p.cil})));
-    if (p.trasa) {
+    if (rec) {
+      plan.append(el("p", {class:"rec-line"}, rec.calm ? "Doporučený cíl teď: " : "Žádné útočiště teď není klidné. Nejlepší je: ",
+        el("strong", {text: rec.name}), rec.pozn ? el("span", {class:"muted", text: ". " + rec.pozn}) : null));
+    } else if (p.cil) {
+      plan.append(el("p", null, "Cíl: ", el("strong", {text:p.cil})));
+    }
+    const trasy = (p.trasy || []).slice();
+    if (rec && rec.trasa) trasy.sort((a, b) => (b.id === rec.trasa) - (a.id === rec.trasa));
+    trasy.forEach((t, i) => {
+      const pts = (t.body || []).filter(b => isFinite(b.lat) && isFinite(b.lon));
+      const body = el("div");
+      body.append(el("ol", {class:"route", "aria-label": t.nazev}, ...(t.body || []).map(b => el("li", {text:b.nazev}))));
+      if ((t.dalnice || []).length) {
+        const issues = t.issues || [];
+        const when = s.route_time ? ` (${fmtTime(s.route_time)})` : "";
+        body.append(el("p", {class:"road-state"},
+          el("span", {class:"lamp", "data-level": issues.length ? 1 : 0, "aria-hidden":"true"}),
+          el("span", {text: issues.length ? `Komplikace na německých dálnicích${when}:` : `Dálnice ${t.dalnice.join(", ")} bez uzavírek a velkých kolon${when}.`})));
+        if (issues.length) body.append(el("ul", {class:"issues"}, ...issues.map(x => el("li", {text:x}))));
+      }
+      if (pts.length >= 2) {
+        const gpxBtn = el("button", {type:"button", class:"btn", text:"Uložit do offline map (GPX)"});
+        gpxBtn.addEventListener("click", () => saveGpx(t, pts));
+        body.append(el("div", {class:"btns"}, gpxBtn,
+          el("a", {class:"btn", href: gmaps(pts), target:"_blank", rel:"noopener", text:"Otevřít v Google Mapách"})));
+      }
+      const label = t.nazev + (rec && t.id === rec.trasa ? " (doporučená)" : "");
+      const d = el("details", {class:"trasa"}, el("summary", {text: label}), body);
+      if (i === 0) d.open = true;
+      plan.append(d);
+    });
+    if (!trasy.length && p.trasa) {
       plan.append(el("ol", {class:"route", "aria-label":"Hlavní trasa"},
         ...p.trasa.split("→").map(x => x.trim()).filter(Boolean).map(x => el("li", {text:x}))));
+    }
+    const fuel = Object.entries(s.fuel || {});
+    if (fuel.length) {
+      plan.append(el("p", {class:"sub", text:"Palivo v Německu"}),
+        el("ul", {class:"fuel"}, ...fuel.map(([n, f]) => el("li", {text:
+          `${n}: otevřeno ${f.open} z ${f.total} pump` + (f.diesel ? `, nafta ${f.diesel.toFixed(2).replace(".", ",")} €` : "")}))),
+        el("p", {class:"attr", text:"Ceny paliva: Tankerkönig, CC BY 4.0."}));
     }
     const dl = el("dl", {class:"plan"});
     [["Záložní trasa", p.zalozni_trasa], ["Sraz", p.sraz], ["Nezapomeň", p.poznamka]].forEach(([k,v]) => {
@@ -353,6 +470,7 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     $("reason").textContent = msg;
     $("meta").textContent = "";
     $("stale").hidden = true;
+    $("dest").hidden = true;
     $("unlock").hidden = false;
     document.querySelector("main").hidden = true;
   }
