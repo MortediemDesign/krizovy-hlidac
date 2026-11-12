@@ -1016,6 +1016,15 @@ def main():
             log(f"Průchod hotov: celkem {st['overall']['emoji']} {st['overall']['label']}, "
                 f"událostí {len(st['events'])}, nefunkční zdroje: "
                 f"{', '.join(s['key'] for s in st['sources'] if not s['ok']) or 'žádné'}")
+            if os.environ.get("GITHUB_ACTIONS") == "true":   # přehled v záložce Actions – bez osobních údajů
+                ok = sum(1 for s in st["sources"] if s["ok"])
+                print(f"::notice title=Zdroje {ok}/{len(st['sources'])}::" + ", ".join(
+                    f"{s['key']} {'OK' if s['ok'] else 'CHYBA'}" for s in st["sources"]), flush=True)
+                for s in st["sources"]:
+                    bad = {k: f["error"] for k, f in (s.get("feeds") or {}).items() if not f["ok"]}
+                    if not s["ok"] or bad:
+                        detail = s["error"] if not s["ok"] else "; ".join(f"{k}: {e}" for k, e in bad.items())
+                        print(f"::warning title=Zdroj {s['key']}::{detail[:400]}", flush=True)
         except Exception:
             log("Chyba průchodu:\n" + traceback.format_exc())
             if args.site:
