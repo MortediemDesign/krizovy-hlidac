@@ -730,9 +730,14 @@ def src_ioda(cfg, fetch):
     def one(z):
         url = f"{IODA}/outages/alerts?entityType=country&entityCode={z['code']}&from={frm}&until={until}&limit=500"
         raw = json.loads(fetch(url, timeout=20))
-        data = raw.get("data") if isinstance(raw, dict) else raw
+        if isinstance(raw, dict) and raw.get("error"):
+            raise RuntimeError(f"IODA: {raw['error']}"[:150])
+        data = raw.get("data", raw) if isinstance(raw, dict) else raw
         if isinstance(data, dict):
-            data = data.get("alerts") or data.get("data") or []
+            data = data.get("alerts", data.get("data"))
+        if not isinstance(data, list):     # jiný formát = hlásit chybu, ne tiše „bez výpadku“
+            keys = list(raw)[:6] if isinstance(raw, dict) else type(raw).__name__
+            raise RuntimeError(f"IODA: neznámý formát odpovědi {keys}")
         latest = {}
         for a in data or []:
             if not isinstance(a, dict):
@@ -817,7 +822,27 @@ def src_gdelt(cfg, fetch, mem):
     q = queries[i]
     url = (f"{GDELT}?query={urllib.parse.quote(q['dotaz'])}&mode=timelinevol&timespan={c.get('timespan', '14d')}"
            f"&format=json")
-    pts = gdelt_points(fetch(url, timeout=30))
+    pts = None
+    for attempt in range(2):   # GitHub sdílí IP adresy s dalšími uživateli GDELT – při omezení jednou zkus znovu
+        try:
+            pts = gdelt_points(fetch(url, timeout=30))
+            break
+        except Exception as e:
+            limited = getattr(e, "code", None) == 429 or "limit requests" in str(e).lower()
+            if not limited:
+                raise
+            if attempt == 0:
+                time.sleep(c.get("retry_seconds", 6))
+    limited = pts is None
+    if limited:                # krátké omezení přečkej s posledními výsledky, dlouhé nahlas ohlas
+        since = parse_date(mem.get("last_ok"))
+        if since is None:
+            mem["last_ok"] = iso(now)
+        elif now - since > timedelta(hours=c.get("limit_hours", 12)):
+            raise RuntimeError(f"GDELT omezuje dotazy už přes {c.get('limit_hours', 12)} h")
+        pts = []
+    else:
+        mem["last_ok"] = iso(now)
     sp = gdelt_spike(pts, now, c.get("okno_hodin", 6))
     if sp:
         cur, base = sp
@@ -836,6 +861,8 @@ def src_gdelt(cfg, fetch, mem):
                                      eid=f"gdelt:{qq['id']}",
                                      detail="Samo o sobě to neznamená nebezpečí – podívej se do zpráv, co se děje."))
     info = ", ".join(f"{r['name']} {r['ratio']}×" for r in res.values()) or "zatím bez dat"
+    if limited:
+        info = "GDELT teď omezuje dotazy, zkusím příště; " + info
     return events, info, {"dotazy": [{"id": qq["id"], **res[qq["id"]]} for qq in queries if qq["id"] in res]}
 
 
@@ -943,8 +970,11 @@ def src_easa(cfg, fetch):
     c = cfg["easa"]
     items = parse_feed(fetch(c.get("url", EASA_FEED)))
     watch = [(re.compile(w["match"]), w.get("region"), w["level"]) for w in c.get("sledovat", EASA_WATCH)]
+    max_age = timedelta(days=c.get("max_age_days", 120))   # kanál obsahuje i stažené bulletiny
     events = []
     for title, link, when in items:
+        if when and utcnow() - when > max_age:
+            continue
         t = norm(title)
         for rx, region, lvl in watch:
             if rx.search(t):

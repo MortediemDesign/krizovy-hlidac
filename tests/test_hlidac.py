@@ -170,9 +170,11 @@ def psp_zip(rows):
     return buf.getvalue()
 
 
-def easa_rss(titles):
+def easa_rss(titles, days_ago=10):
+    import email.utils
+    d = email.utils.format_datetime(datetime.now(timezone.utc) - timedelta(days=days_ago))
     items = "".join(f"<item><title>{t}</title><link>https://www.easa.europa.eu/domains/air-operations/czibs/{i}</link>"
-                    f"<description/><pubDate>Wed, 30 Sep 2026 00:00:00 +0300</pubDate></item>" for i, t in enumerate(titles))
+                    f"<description/><pubDate>{d}</pubDate></item>" for i, t in enumerate(titles))
     return f'<?xml version="1.0"?><rss version="2.0"><channel><title>CZIB</title>{items}</channel></rss>'.encode()
 
 
@@ -732,6 +734,8 @@ class TestSignals(unittest.TestCase):
         self.assertEqual(ev, [])
         ev, *_ = run([ioda_alert("ping-slash24", "critical", 15, "DE")])
         self.assertEqual([e["level"] for e in ev], [1])
+        with self.assertRaises(RuntimeError):                       # jiný formát odpovědi = nahlas, ne „klid“
+            hlidac.src_ioda(CFG, FakeNet({"api.ioda": json.dumps({"type": "x", "result": []}).encode()}))
 
     def test_gdelt(self):
         mem = {}
@@ -742,8 +746,19 @@ class TestSignals(unittest.TestCase):
         ev, *_ = hlidac.src_gdelt(CFG, net, mem)                      # 2. dotaz normální, NATO pořád drží
         self.assertEqual(len(ev), 1)
         self.assertEqual(len(extra["dotazy"]), 1)
+        import urllib.error
+        cfg = {**CFG, "gdelt": {**CFG["gdelt"], "retry_seconds": 0}}
+        limited = FakeNet({"gdelt": urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None)})
+        ev, info, extra = hlidac.src_gdelt(cfg, limited, mem)          # omezení: drží poslední výsledky
+        self.assertEqual(len(ev), 1)
+        self.assertIn("omezuje", info)
+        ev, info, _ = hlidac.src_gdelt(cfg, FakeNet({"gdelt": b"Please limit requests to one every 5 seconds"}), {})
+        self.assertEqual(ev, [])
+        mem["last_ok"] = hlidac.iso(hlidac.utcnow() - timedelta(hours=13))
+        with self.assertRaises(RuntimeError):                          # dlouhé omezení = chyba zdroje
+            hlidac.src_gdelt(cfg, limited, mem)
         with self.assertRaises(RuntimeError):
-            hlidac.src_gdelt(CFG, FakeNet({"gdelt": b"Please limit requests to one every 5 seconds"}), {})
+            hlidac.src_gdelt(cfg, FakeNet({"gdelt": b"Your query was too short"}), {})
         self.assertIsNone(hlidac.gdelt_spike([], hlidac.utcnow()))
 
     def test_nukib(self):
@@ -775,6 +790,8 @@ class TestSignals(unittest.TestCase):
                                          "Airspace of Germany", "Airspace of Belarus"])})
         ev, info = hlidac.src_easa(CFG, net)
         self.assertEqual(sorted((e["region"], e["level"]) for e in ev), [("DE", 3), ("EU", 1), ("EU", 2)])
+        ev, info = hlidac.src_easa(CFG, FakeNet({"easa": easa_rss(["Airspace of Moldova"], days_ago=400)}))
+        self.assertEqual(ev, [])                                     # starý (stažený) bulletin se ignoruje
 
     def test_emsc(self):
         ev, info, extra = hlidac.src_emsc(CFG, FakeNet({"seismicportal": b""}))
