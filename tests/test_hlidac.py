@@ -137,11 +137,60 @@ AUTOBAHN_WARNING = json.dumps({"warning": [
 EMPTY_CLOSURE, EMPTY_WARNING = b'{"closure": []}', b'{"warning": []}'
 
 
+def ioda_json(alerts):
+    return json.dumps({"type": "outages.alerts", "error": None, "data": alerts}).encode()
+
+
+def ioda_alert(ds, level, minutes_ago, code="CZ"):
+    t = int(datetime.now(timezone.utc).timestamp()) - minutes_ago * 60
+    return {"datasource": ds, "entity": {"code": code, "type": "country"}, "time": t, "level": level,
+            "condition": "< 0.8", "value": 1, "historyValue": 2}
+
+
+def gdelt_json(normal=0.01, recent=0.01, hours=14 * 24):
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    data = [{"date": (now - timedelta(hours=h)).strftime("%Y%m%dT%H%M%SZ"), "value": recent if h < 6 else normal}
+            for h in range(hours, -1, -1)]
+    return json.dumps({"query_details": {"title": "x"}, "timeline": [{"series": "Volume Intensity", "data": data}]}).encode()
+
+
+def nukib_html(items):
+    links = "".join(f'<div class="news"><a href="/cs/infoservis/aktuality/{i}-x"><img src="a.png"></a>'
+                    f'<h3><a href="/cs/infoservis/aktuality/{i}-x">{t}</a></h3></div>' for i, t in items)
+    return f"<html><body>{links}</body></html>".encode()
+
+
+def psp_zip(rows):
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("tisky.unl", "".join(f"{i}|1|2|{i}|0|Vláda|{t}|2026-11-10|\n" for i, t in rows).encode("cp1250"))
+        z.writestr("druh_tisku.unl", "1|Vládní návrh zákona|\n".encode("cp1250"))
+    return buf.getvalue()
+
+
+def easa_rss(titles):
+    items = "".join(f"<item><title>{t}</title><link>https://www.easa.europa.eu/domains/air-operations/czibs/{i}</link>"
+                    f"<description/><pubDate>Wed, 30 Sep 2026 00:00:00 +0300</pubDate></item>" for i, t in enumerate(titles))
+    return f'<?xml version="1.0"?><rss version="2.0"><channel><title>CZIB</title>{items}</channel></rss>'.encode()
+
+
+def emsc_json(quakes):
+    feats = [{"type": "Feature", "id": f"q{i}", "geometry": {"type": "Point", "coordinates": [12.45, 50.25, -9]},
+              "properties": {"unid": f"q{i}", "time": (datetime.now(timezone.utc) - timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%S.0Z"),
+                             "lat": 50.25, "lon": 12.45, "depth": 9.0, "mag": m, "magtype": "ml", "flynn_region": "CZECH REPUBLIC"}}
+             for i, (m, h) in enumerate(quakes)]
+    return json.dumps({"type": "FeatureCollection", "metadata": {"count": len(feats)}, "features": feats}).encode()
+
+
 class FakeNet:
     def __init__(self, routes):
         self.routes = dict(routes)
+        self.calls = []
 
-    def __call__(self, url, timeout=25):
+    def __call__(self, url, timeout=25, headers=None):
+        self.calls.append((url, headers or {}))
         for key, val in self.routes.items():
             if key in url:
                 if isinstance(val, Exception):
@@ -172,6 +221,13 @@ def base_routes():
         "imis.bfs.de": bfs([0.09, 0.1, 0.11]),
         "ct24": rss([("Počasí: o víkendu sníh", None)]),
         "irozhlas": rss([]), "novinky": rss([]), "tagesschau": rss([]), "mdr": rss([]), "elpais": rss([]), "bbc": rss([]),
+        "sujb.gov.cz": rss([]),
+        "api.ioda": lambda: ioda_json([ioda_alert("bgp", "normal", 30)]),
+        "gdeltproject.org": lambda: gdelt_json(),
+        "nukib.gov.cz": nukib_html([(2481, "NÚKIB popisuje postupy ruských aktérů")]),
+        "psp.cz/eknih": psp_zip([(1, "Vládní návrh zákona o daních")]),
+        "easa.europa.eu": easa_rss(["Airspace of Iran", "Airspace of Ukraine"]),
+        "seismicportal.eu": b"",
     }
 
 
@@ -631,6 +687,165 @@ class TestServer(unittest.TestCase):
         self.assertEqual(get("/health")[0], 200)
         self.assertEqual(get("/?k=%C5%99")[0], 401)              # ne-ASCII token nespadne
         srv.shutdown()
+        tmp.cleanup()
+
+
+class TestSignals(unittest.TestCase):
+    def setUp(self):
+        os.environ.pop("AGSI_KEY", None)
+
+    def tearDown(self):
+        os.environ.pop("AGSI_KEY", None)
+
+    def test_gas(self):
+        ev, info, extra = hlidac.src_gas(CFG, FakeNet({}), {})
+        self.assertIn("chybí klíč", info)
+        os.environ["AGSI_KEY"] = "abc"
+        rows = lambda full, inj, wd: json.dumps({"last_page": 1, "gas_day": "2026-11-10", "data": [
+            {"name": "x", "gasDayStart": "2026-11-10", "full": full, "gasInStorage": "20.5", "injection": inj, "withdrawal": wd,
+             "trend": "-1.20"},
+            {"name": "x", "gasDayStart": "2026-11-09", "full": "99", "gasInStorage": "99", "injection": "0", "withdrawal": "0"}]}).encode()
+        net = FakeNet({"country=de": rows("8.40", "0", "900"), "country=cz": rows("55.00", "10", "40"),
+                       "type=eu": rows("17.00", "0", "100")})
+        mem = {}
+        ev, info, extra = hlidac.src_gas(CFG, net, mem)
+        by = {e["region"]: e["level"] for e in ev}
+        self.assertEqual(by, {"DE": 2, "EU": 1})                     # DE pod 10 %, EU pod 20 %, CZ v pořádku
+        self.assertTrue(all(h.get("x-key") == "abc" for _, h in net.calls))
+        de = next(g for g in extra["zeme"] if g["code"] == "DE")
+        self.assertEqual((de["full"], de["days"], de["day"]), (8.4, 23, "2026-11-10"))
+        n = len(net.calls)
+        hlidac.src_gas(CFG, net, mem)                                # do 6 h se znovu nestahuje
+        self.assertEqual(len(net.calls), n)
+
+    def test_ioda(self):
+        def run(alerts):
+            return hlidac.src_ioda(CFG, FakeNet({"entityCode=DE": ioda_json(alerts), "api.ioda": ioda_json([])}))
+        ev, info, extra = run([ioda_alert("bgp", "critical", 20, "DE"), ioda_alert("ping-slash24", "critical", 10, "DE")])
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("DE", 2)])
+        self.assertIn("internetu", ev[0]["title"])
+        ev, *_ = run([ioda_alert("ucsd-nt", "critical", 10, "DE")])                   # jen teleskop = šum
+        self.assertEqual(ev, [])
+        ev, *_ = run([ioda_alert("bgp", "critical", 50, "DE"), ioda_alert("bgp", "normal", 5, "DE")])   # už se zotavilo
+        self.assertEqual(ev, [])
+        ev, *_ = run([ioda_alert("bgp", "critical", 300, "DE")])                       # staré
+        self.assertEqual(ev, [])
+        ev, *_ = run([ioda_alert("ping-slash24", "critical", 15, "DE")])
+        self.assertEqual([e["level"] for e in ev], [1])
+
+    def test_gdelt(self):
+        mem = {}
+        net = FakeNet({"nato": gdelt_json(0.01, 0.12), "gdeltproject.org": gdelt_json()})
+        ev, info, extra = hlidac.src_gdelt(CFG, net, mem)             # 1. dotaz = NATO, prudký nárůst
+        self.assertEqual([e["level"] for e in ev], [1])
+        self.assertIn("12×", ev[0]["title"])
+        ev, *_ = hlidac.src_gdelt(CFG, net, mem)                      # 2. dotaz normální, NATO pořád drží
+        self.assertEqual(len(ev), 1)
+        self.assertEqual(len(extra["dotazy"]), 1)
+        with self.assertRaises(RuntimeError):
+            hlidac.src_gdelt(CFG, FakeNet({"gdelt": b"Please limit requests to one every 5 seconds"}), {})
+        self.assertIsNone(hlidac.gdelt_spike([], hlidac.utcnow()))
+
+    def test_nukib(self):
+        mem = {}
+        first = nukib_html([(2479, "Informace k vlně útoků na chladicí zařízení"), (2481, "NÚKIB popisuje postupy")])
+        ev, info = hlidac.src_nukib(CFG, FakeNet({"nukib": first}), mem)
+        self.assertEqual(ev, [])                                    # výchozí stav se nehlásí
+        later = nukib_html([(2490, "NÚKIB vydal varování před hrozbou kybernetických útoků na energetiku"),
+                            (2491, "NÚKIB vydal varování před produkty společnosti X"), (2481, "NÚKIB popisuje postupy")])
+        ev, info = hlidac.src_nukib(CFG, FakeNet({"nukib": later}), mem)
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("CZ", 1)])
+        self.assertTrue(ev[0]["url"].startswith("https://nukib.gov.cz/cs/infoservis/aktuality/2490"))
+        with self.assertRaises(RuntimeError):
+            hlidac.src_nukib(CFG, FakeNet({"nukib": b"<html></html>"}), mem)
+
+    def test_psp(self):
+        mem = {}
+        ev, info = hlidac.src_psp(CFG, FakeNet({"psp.cz": psp_zip([(10, "Vládní návrh zákona o daních")])}), mem)
+        self.assertEqual(ev, [])
+        mem["time"] = ""                                             # vynutit nové stažení
+        rows = [(10, "Vládní návrh zákona o daních"), (11, "Vládní návrh na vyhlášení stavu ohrožení státu"),
+                (12, "Vládní návrh zákona o branné povinnosti a mobilizaci"), (13, "Návrh zákona o myslivosti")]
+        ev, info = hlidac.src_psp(CFG, FakeNet({"psp.cz": psp_zip(rows)}), mem)
+        self.assertEqual(sorted((e["level"], e["id"]) for e in ev), [(1, "psp:12"), (2, "psp:11")])
+        self.assertEqual(mem["max_id"], 13)
+
+    def test_easa(self):
+        net = FakeNet({"easa": easa_rss(["Airspace of Iran", "Airspace of Poland and the Baltic States",
+                                         "Airspace of Germany", "Airspace of Belarus"])})
+        ev, info = hlidac.src_easa(CFG, net)
+        self.assertEqual(sorted((e["region"], e["level"]) for e in ev), [("DE", 3), ("EU", 1), ("EU", 2)])
+
+    def test_emsc(self):
+        ev, info, extra = hlidac.src_emsc(CFG, FakeNet({"seismicportal": b""}))
+        self.assertEqual((ev, extra["quakes"]), ([], []))
+        ev, info, extra = hlidac.src_emsc(CFG, FakeNet({"seismicportal": emsc_json([(3.8, 2), (2.1, 5), (4.0, 60)])}))
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("CZ", 1)])   # silný otřes před 60 h už se nedrží
+        self.assertEqual([q["mag"] for q in extra["quakes"]], [3.8, 2.1, 4.0])
+        self.assertIn("nejsilnější M4.0", info)
+
+    def test_gas_rules(self):
+        rules = hlidac.compile_rules(CFG)
+        ids = lambda t: {r["id"] for r in hlidac.match_rules(t, rules)}
+        self.assertIn("plyn_de", ids("Bundesregierung ruft Alarmstufe im Notfallplan Gas aus"))
+        self.assertIn("plyn_de_nouze", ids("Habeck: Notfallstufe Gas tritt in Kraft"))
+        self.assertIn("plyn_cz", ids("Vláda vyhlásila stav nouze v plynárenství"))
+        self.assertNotIn("plyn_de", ids("Alarmstufe Gas wird aufgehoben"))
+        self.assertNotIn("plyn_cz", ids("Ministerstvo ukončilo stav předcházení stavu nouze v plynárenství"))
+
+
+class TestPreparedness(unittest.TestCase):
+    def setUp(self):
+        self.sent = []
+        self._orig = hlidac.send_notification
+        hlidac.send_notification = lambda title, msg, level, url="": (self.sent.append((title, msg, level)) or ["test"])
+
+    def tearDown(self):
+        hlidac.send_notification = self._orig
+
+    def cfg(self, items):
+        return {**CFG, "pripravenost": {"varovat_dni": 60, "upozornit_dni": [60, 30, 7, 0], "polozky": items}}
+
+    def test_states_and_reminders(self):
+        today = NOW.astimezone(hlidac.local_tz(CFG)).date()
+        d = lambda n: (today + timedelta(days=n)).isoformat()
+        cfg = self.cfg([
+            {"id": "op", "nazev": "Občanka", "plati_do": d(25)}, {"id": "pas", "nazev": "Pas", "plati_do": d(400)},
+            {"id": "stk", "nazev": "STK", "plati_do": None}, {"id": "old", "nazev": "Pojištění", "plati_do": d(-3)},
+            {"id": "crit", "nazev": "Crit'Air", "hotovo": False}, {"id": "zbe", "nazev": "ZBE", "hotovo": True},
+            {"id": "ch", "nazev": "Známka CH", "hotovo": False, "volitelne": True}])
+        items = hlidac.preparedness(cfg, NOW)
+        self.assertEqual({i["id"]: i["stav"] for i in items},
+                         {"op": "brzy", "pas": "ok", "stk": "chybi_datum", "old": "propadle", "crit": "nevyrizeno",
+                          "zbe": "ok", "ch": "volitelne"})
+        probs = hlidac.prep_problems(items)
+        self.assertEqual(len(probs), 3)
+        self.assertTrue(any("propadlé" in p for p in probs))
+        state = {}
+        hlidac.remind_preparedness(cfg, state, items, NOW)
+        self.assertEqual(len(self.sent), 1)                         # jedna souhrnná zpráva
+        self.assertEqual(self.sent[0][2], 1)                        # propadlé = vyšší priorita
+        self.assertIn("Občanka", self.sent[0][1])
+        hlidac.remind_preparedness(cfg, state, items, NOW)
+        self.assertEqual(len(self.sent), 1)                         # stejný práh se neopakuje
+        later = hlidac.preparedness(cfg, NOW + timedelta(days=20))   # občanka teď 5 dní → práh 7
+        hlidac.remind_preparedness(cfg, state, later, NOW + timedelta(days=20))
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn("Občanka", self.sent[1][1])
+        self.assertNotIn("Pojištění", self.sent[1][1])
+
+    def test_context_and_status(self):
+        cfg = self.cfg([{"id": "crit", "nazev": "Crit'Air", "hotovo": False}])
+        tmp = tempfile.TemporaryDirectory()
+        hlidac.DATA = Path(tmp.name)
+        state = {}
+        st = hlidac.run_cycle(cfg, state, fetch=FakeNet(base_routes()), now=NOW)
+        self.assertEqual(st["pripravenost"][0]["stav"], "nevyrizeno")
+        self.assertTrue(st["seznamy"] and st["seznamy"][0]["polozky"])
+        lines = hlidac.context_lines(hlidac.alert_context(cfg, state, {"ES": 0, "PT": 0, "IE": 0}))
+        self.assertTrue(any(l.startswith("Než vyrazíš: Crit'Air") for l in lines))
+        self.assertTrue(all(t.get("zony") is not None for t in st["plan"]["trasy"]))
+        self.assertFalse(any(b["nazev"] == "Lyon" for t in st["plan"]["trasy"] for b in t["body"]))
         tmp.cleanup()
 
 

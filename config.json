@@ -48,14 +48,24 @@
             "lon": 8.4037
           },
           {
-            "nazev": "Lyon",
-            "lat": 45.764,
-            "lon": 4.8357
+            "nazev": "Vienne (Lyon jen po dálnici)",
+            "lat": 45.5256,
+            "lon": 4.8744
           },
           {
             "nazev": "Barcelona",
             "lat": 41.3874,
             "lon": 2.1686
+          }
+        ],
+        "zony": [
+          {
+            "misto": "Lyon",
+            "pozn": "Nízkoemisní zóna ZFE: Crit'Air 3 (auta s Crit'Air 3 a horší) má od 1. 7. 2026 pokuty. Dálnice A6, A7 a A42 jsou ze zóny vyňaté – drž se jich a do města nesjížděj, ani kvůli palivu."
+          },
+          {
+            "misto": "Barcelona",
+            "pozn": "Zóna ZBE (všední dny 7–20 h): auto se zahraniční SPZ musí být předem v metropolitním registru, vyřízení trvá až 15 pracovních dní, jinak pokuta od 200 €."
           }
         ]
       },
@@ -83,9 +93,9 @@
             "lon": 8.4037
           },
           {
-            "nazev": "Lyon",
-            "lat": 45.764,
-            "lon": 4.8357
+            "nazev": "Vienne (Lyon jen po dálnici)",
+            "lat": 45.5256,
+            "lon": 4.8744
           },
           {
             "nazev": "Toulouse",
@@ -101,6 +111,16 @@
             "nazev": "Lisabon",
             "lat": 38.7223,
             "lon": -9.1393
+          }
+        ],
+        "zony": [
+          {
+            "misto": "Lyon",
+            "pozn": "Nízkoemisní zóna ZFE: Crit'Air 3 (auta s Crit'Air 3 a horší) má od 1. 7. 2026 pokuty. Dálnice A6, A7 a A42 jsou ze zóny vyňaté – drž se jich a do města nesjížděj, ani kvůli palivu."
+          },
+          {
+            "misto": "Toulouse",
+            "pozn": "ZFE: Crit'Air 3 tu podle stavu z roku 2025 smí, nálepku ale mít musíš. Před cestou ověř."
           }
         ]
       },
@@ -147,6 +167,12 @@
             "nazev": "Dublin",
             "lat": 53.3498,
             "lon": -6.2603
+          }
+        ],
+        "zony": [
+          {
+            "misto": "Irsko",
+            "pozn": "Na trajekt i do Irska potřebuje platný doklad každý, i dítě."
           }
         ]
       }
@@ -352,6 +378,11 @@
         "id": "iaea",
         "name": "MAAE (IAEA)",
         "url": "https://www.iaea.org/feeds/topnews"
+      },
+      {
+        "id": "sujb",
+        "name": "SÚJB",
+        "url": "https://sujb.gov.cz/aktualne/rss.xml"
       }
     ],
     "rules": [
@@ -517,6 +548,35 @@
         "advice": "Při úniku radiace se nejdřív ukryj uvnitř (zavři okna, vypni větrání) a řiď se pokyny HZS. Jód ber jen na pokyn úřadů. Odjížděj jen na pokyn nebo napříč směrem větru, ne skrz mrak.",
         "match": "(temelin|dukovan|jadern[a-z]* elektrarn)[^.]{0,60}(havari|unik|mimoradn|evakuac|radiac)|(havari|unik|mimoradn)[a-z]*[^.]{0,60}(temelin|dukovan)",
         "exclude": "cviceni|ubung|exercise|test|cvic"
+      },
+      {
+        "id": "plyn_de",
+        "label": "Plyn v Německu – vyhlášen stupeň krizového plánu",
+        "region": "DE",
+        "single": 1,
+        "confirmed": 1,
+        "match": "(fruhwarnstufe|alarmstufe)[^.]{0,40}gas|gas[a-z]*[^.]{0,60}(fruhwarnstufe|alarmstufe)",
+        "exclude": "aufgehoben|beendet|aufheb|endet|zuruckgenommen"
+      },
+      {
+        "id": "plyn_de_nouze",
+        "label": "Plyn v Německu – nouzový stupeň / nedostatek plynu",
+        "region": "DE",
+        "single": 1,
+        "confirmed": 2,
+        "match": "notfallstufe[^.]{0,40}gas|gas[a-z]*[^.]{0,60}notfallstufe|gasmangellage|gas[a-z]* (rationier|zuteil)",
+        "exclude": "aufgehoben|beendet|aufheb|endet|zuruckgenommen",
+        "advice": "Plyn se může omezovat – měj záložní teplo a zásoby na 72 h. Blackout je pravděpodobnější, když chybí plyn pro elektrárny."
+      },
+      {
+        "id": "plyn_cz",
+        "label": "Plyn v Česku – stav nouze",
+        "region": "CZ",
+        "single": 1,
+        "confirmed": 2,
+        "match": "stav[a-z]* nouze[^.]{0,40}plyn|plyn[a-z]*[^.]{0,60}stav[a-z]* nouze|omezeni dodavek plynu|regulacni stup[a-z]*[^.]{0,30}plyn",
+        "exclude": "predchazeni|ukonc|zrus|konci",
+        "advice": "Plyn se může omezovat – měj záložní teplo a zásoby na 72 h. Blackout je pravděpodobnější, když chybí plyn pro elektrárny."
       }
     ]
   },
@@ -585,6 +645,176 @@
         "name": "Karlsruhe",
         "lat": 49.0069,
         "lon": 8.4037
+      }
+    ]
+  },
+  "gas": {
+    "enabled": true,
+    "refresh_hours": 6,
+    "sledovat_pod_pct": 20,
+    "pripravit_pod_pct": 10,
+    "sledovat_dni": 30,
+    "pripravit_dni": 14,
+    "zeme": [
+      {
+        "code": "DE",
+        "name": "Německo",
+        "region": "DE"
+      },
+      {
+        "code": "CZ",
+        "name": "Česko",
+        "region": "CZ"
+      },
+      {
+        "code": "EU",
+        "name": "EU",
+        "region": "EU"
+      }
+    ]
+  },
+  "internet": {
+    "enabled": true,
+    "okno_hodin": 6,
+    "cerstve_hodin": 2,
+    "zeme": [
+      {
+        "code": "CZ",
+        "name": "Česko",
+        "region": "CZ"
+      },
+      {
+        "code": "DE",
+        "name": "Německo",
+        "region": "DE"
+      },
+      {
+        "code": "ES",
+        "name": "Španělsko",
+        "region": "ES"
+      },
+      {
+        "code": "PT",
+        "name": "Portugalsko",
+        "region": "PT"
+      },
+      {
+        "code": "IE",
+        "name": "Irsko",
+        "region": "IE"
+      }
+    ]
+  },
+  "gdelt": {
+    "enabled": true,
+    "timespan": "14d",
+    "okno_hodin": 6,
+    "pomer": 4,
+    "min": 0.02,
+    "dotazy": [
+      {
+        "id": "nato",
+        "nazev": "Útok na NATO / článek 5",
+        "dotaz": "(\"article 5\" OR \"attack on nato\" OR \"nato territory\")"
+      },
+      {
+        "id": "jaderne",
+        "nazev": "Jaderný útok",
+        "dotaz": "(\"nuclear strike\" OR \"nuclear attack\" OR \"nuclear detonation\")"
+      },
+      {
+        "id": "mobilizace",
+        "nazev": "Mobilizace a stanné právo",
+        "dotaz": "(\"general mobilization\" OR \"general mobilisation\" OR \"martial law\")"
+      },
+      {
+        "id": "blackout",
+        "nazev": "Rozsáhlý blackout",
+        "dotaz": "(\"nationwide blackout\" OR \"massive blackout\" OR \"grid collapse\")"
+      }
+    ]
+  },
+  "nukib": {
+    "enabled": true,
+    "drzet_dni": 7
+  },
+  "psp": {
+    "enabled": true,
+    "refresh_hours": 6,
+    "drzet_dni": 14
+  },
+  "easa": {
+    "enabled": true
+  },
+  "zemetreseni": {
+    "enabled": true,
+    "dni": 7,
+    "min_mag": 2.0,
+    "sledovat_od": 3.5,
+    "pripravit_od": 5.0,
+    "drzet_hodin": 24,
+    "zony": [
+      {
+        "name": "Chebsko a Vogtland",
+        "bbox_lon_lat": [
+          11.9,
+          49.8,
+          13.2,
+          50.7
+        ],
+        "region": "CZ"
+      }
+    ]
+  },
+  "pripravenost": {
+    "varovat_dni": 60,
+    "upozornit_dni": [
+      60,
+      30,
+      7,
+      0
+    ],
+    "polozky": [
+      {
+        "id": "op_1",
+        "nazev": "Občanka – dospělý 1",
+        "plati_do": null,
+        "pozn": "Doplň datum ve formátu 2028-05-31."
+      },
+      {
+        "id": "op_2",
+        "nazev": "Občanka – dospělý 2",
+        "plati_do": null
+      },
+      {
+        "id": "doklad_dite",
+        "nazev": "Doklad pro dítě (občanka nebo pas)",
+        "plati_do": null,
+        "pozn": "Dítě musí mít vlastní doklad, občanka rodiče nestačí."
+      },
+      {
+        "id": "stk",
+        "nazev": "STK",
+        "plati_do": null
+      },
+      {
+        "id": "pojisteni",
+        "nazev": "Povinné ručení a zelená karta",
+        "plati_do": null
+      },
+      {
+        "id": "critair",
+        "nazev": "Nálepka Crit'Air (Francie)",
+        "hotovo": false,
+        "pozn": "Povinná v nízkoemisních zónách ve Francii, i pro zahraniční auta. Objednávej jen na oficiálním webu.",
+        "odkaz": "https://www.certificat-air.gouv.fr/"
+      },
+      {
+        "id": "zbe_bcn",
+        "nazev": "Registrace do zóny ZBE Barcelona",
+        "hotovo": false,
+        "pozn": "Zahraniční auto musí být v registru předem, vyřízení až 15 pracovních dní.",
+        "odkaz": "https://www.zbe.barcelona/"
       }
     ]
   }

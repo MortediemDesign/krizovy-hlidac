@@ -5,9 +5,9 @@ Osobní systém včasného varování před válkou, rozsáhlým blackoutem a ka
 | Stupeň | Význam | Typický spouštěč |
 |---|---|---|
 | 🟢 Klid | nic neobvyklého | — |
-| 🟡 Sleduj | zvýšené napětí | výstraha ČHMÚ, 2. SPA na vodočtu, geomagnetická bouře G4, zavřené pumpy na trase, jednotlivá zpráva o výpadku nebo útoku |
-| 🟠 Připrav se | hrozba v řádu dnů | výstraha NINA „Extreme“, 3. SPA na vodočtu, zvýšená radiace u hranic, zpráva o stavu ohrožení státu z 1 zdroje, předpověď bouře G5 |
-| 🔴 Odjeď | bezprostřední hrozba | letecký poplach v Německu, potvrzený návrh stavu ohrožení státu, cestovní varování pro ČR, čl. 5 NATO |
+| 🟡 Sleduj | zvýšené napětí | výstraha ČHMÚ, 2. SPA na vodočtu, geomagnetická bouře G4, zavřené pumpy na trase, jednotlivá zpráva o výpadku nebo útoku, plyn v zásobnících pod 20 %, kybernetické varování NÚKIB, prudký nárůst světových zpráv, otřes od M3,5 v okolí |
+| 🟠 Připrav se | hrozba v řádu dnů | výstraha NINA „Extreme“, 3. SPA na vodočtu, zvýšená radiace u hranic, zpráva o stavu ohrožení státu z 1 zdroje, předpověď bouře G5, výpadek internetu celé země, vládní návrh stavu ohrožení státu ve Sněmovně, bulletin EASA pro vzdušný prostor v Evropě |
+| 🔴 Odjeď | bezprostřední hrozba | letecký poplach v Německu, potvrzený návrh stavu ohrožení státu, cestovní varování pro ČR, čl. 5 NATO, bulletin EASA pro vzdušný prostor Česka nebo Německa |
 
 Celkový stav se počítá z domova, práce a Evropy. Útočiště (v ukázce Španělsko, Portugalsko a Irsko) se hodnotí zvlášť: problém tam znamená „jeď jinam“, ne „uteč z domova“. Dashboard i upozornění od stupně 🟠 doporučí nejklidnější útočiště a ukážou komplikace na trase k němu. Dokud trvá 🔴, hlídač upozornění opakuje každých 30 minut.
 
@@ -73,6 +73,12 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 - **`plan.trasy`**: trasy s body (`nazev`, `lat`, `lon`) a německými dálnicemi (`dalnice`), které se hlídají přes Autobahn API (uzavírky a kolony nad 30 minut). České silnice API nemají.
 - V dashboardu je u každé trasy **Uložit do offline map (GPX)**. Na iPhonu se otevře sdílení, kde zvolíš OsmAnd nebo Organic Maps. Druhé tlačítko otevře trasu v Google Mapách.
 - **Palivo v Německu** (volitelné): zaregistruj se zdarma na creativecommons.tankerkoenig.de a klíč dej do secretu `TANKERKOENIG_KEY`. Hlídač pak u bodů z `fuel.points` sleduje, kolik pump je otevřených a jestli nafta prudce nezdražila. API dovoluje jeden dotaz za minutu, takže se při každém běhu ptá na jeden bod.
+- **`zony`** u trasy: poznámky k nízkoemisním zónám a místům, kde je potřeba něco vyřídit předem (Crit'Air pro Francii, registrace ZBE v Barceloně). Body tras vedou mimo centra měst se zákazy – dashboard je ukáže pod nadpisem *Pozor na trase*.
+
+## Připravenost
+
+- **`pripravenost.polozky`**: doklady a věci k vyřízení. Položka s `plati_do` (datum `2028-05-31`, `null` = chybí) se hlídá: připomínka přijde 60, 30 a 7 dní předem a v den konce (`upozornit_dni`). Položka s `hotovo: false` je úkol (Crit'Air, ZBE), `volitelne: true` = až bude potřeba. Nevyřízené věci se připomenou v nedělním „běžím“ a od stupně 🟠 i v upozornění („Než vyrazíš: …“).
+- **Seznamy na 72 hodin** (nouzové zásoby, evakuační zavazadlo, dítě, auto, telefon) jsou v dashboardu k odškrtávání, zaškrtnutí si pamatuje telefon. Vlastní seznamy jdou nastavit v `seznamy`. Podklady: příručka 72 hodin Ministerstva vnitra.
 
 ## Úpravy konfigurace
 
@@ -83,6 +89,11 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 - **`bfs_radiation`**: radiace z německé sítě BfS. `zones` jsou výřezy mapy (např. hranice u domova, Šumava ve směru od Temelína) a k nim prahy: ≥ `min_stations` sond nad `warn_usvh` → 🟠, nad `alarm_usvh` → 🔴. Hlídač si u každé sondy pamatuje její normál a ≥ `rise_min_stations` sond aspoň `rise_factor`× nad normálem hlásí jako 🟡 (často jde o silný déšť). Běžné pozadí je 0,05–0,2 µSv/h. U radiace upozornění radí nejdřív se ukrýt, ne hned odjíždět. Česká síť SÚJB ani rakouská nemají otevřené rozhraní, dashboard na ně odkazuje.
 - **`chmi_hydro`**: vodočty ČHMÚ (ID stanice z `opendata.chmi.cz/hydrology/now/metadata/meta1.json`). Hranice SPA se načtou samy. `levels` převádí SPA na stupeň hlídače (výchozí 2. SPA → 🟡, 3. SPA → 🟠, extrémní povodeň → 🔴), hlídá se i předpověď na 48 h a rychlé stoupání hladiny.
 - **`news.rules`**: pravidla pro titulky. Regulární výrazy piš **malými písmeny bez diakritiky**. `single` = stupeň při 1 zdroji, `confirmed` = při ≥ 2 nezávislých zdrojích, `feeds` = jen pro vybrané kanály.
+- **`gas`**: zásobníky plynu (GIE AGSI+). Klíč zdarma po registraci na agsi.gie.eu → secret `AGSI_KEY` (nebo `"env": {"AGSI_KEY": "…"}` v šifrované konfiguraci). Pod `sledovat_pod_pct` → 🟡, pod `pripravit_pod_pct` → 🟠; totéž pro počet dní, na které by zásobníky vystačily při dnešním odběru.
+- **`internet`**: výpadky internetu celých zemí (IODA). Kritický pokles ve dvou měřeních → 🟠, v jednom → 🟡, samotné teleskopy se ignorují.
+- **`gdelt.dotazy`**: témata, u kterých se hlídá prudký nárůst zpráv ve světě (GDELT, 65 jazyků). Dotaz v angličtině, `pomer` = kolikrát víc než běžný den. Každý běh se ptá na jedno téma.
+- **`nukib`, `psp`, `easa`**: úřední signály – varování NÚKIB před útoky, nové sněmovní tisky o stavu ohrožení státu nebo mobilizaci (první běh si zapamatuje výchozí stav a staré tisky nehlásí) a bulletiny EASA o konfliktních zónách v Evropě.
+- **`zemetreseni`**: otřesy v okolí domova (EMSC). Výchozí výřez je Chebsko a Vogtland, nejaktivnější seismická oblast Česka.
 - **`notify.repeat_level3_minutes`**: jak často opakovat upozornění, dokud trvá 🔴 (0 = vypnuto).
 - **`notify.min_level`**: od jakého stupně posílat upozornění (výchozí 1).
 
@@ -99,7 +110,14 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 | ČHMÚ (otevřená data) | vodočty, stupně povodňové aktivity a předpověď |
 | Autobahn GmbH | uzavírky a kolony na německých dálnicích tras |
 | Tankerkönig (CC BY 4.0) | otevřené pumpy a ceny nafty na trase (volitelné) |
-| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC, MAAE | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
+| GIE AGSI+ | plyn v zásobnících v Německu, Česku a EU (volitelné, klíč zdarma) |
+| IODA (Georgia Tech) | výpadky internetu celých zemí – nezávislý signál blackoutu nebo kyberútoku |
+| GDELT | prudký nárůst světových zpráv na sledovaná témata |
+| NÚKIB | úřední varování před kybernetickými útoky |
+| Poslanecká sněmovna (otevřená data) | nové sněmovní tisky: stav ohrožení státu, válečný stav, mobilizace |
+| EASA | bulletiny o konfliktních zónách pro civilní letectví |
+| EMSC | zemětřesení v okolí domova |
+| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC, MAAE, SÚJB | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
 
 Nefunkční zdroj ukáže dashboard v části Zdroje. Když jich nefunguje většina, místo „Klid“ ukáže „Bez dat“.
 
@@ -111,7 +129,7 @@ Nefunkční zdroj ukáže dashboard v části Zdroje. Když jich nefunguje vět�
 
 - **Náhlý blackout přijde bez varování.** Hlídač dá čas u války, plynové krize, povodní a geomagnetických bouří. Na náhlý výpadek proudu jsou zásoby doma.
 - Pravidla pro titulky zachytí i úvahy typu „Co kdyby…“. Proto 1 zdroj = nižší stupeň s poznámkou „ověř“.
-- Hlídač nenahrazuje oficiální varování: aplikaci NINA, výstražné zprávy v telefonu (Cell Broadcast) a sirény.
+- Hlídač nenahrazuje oficiální varování: aplikaci NINA, výstražné zprávy v telefonu (Cell Broadcast, v Česku se spouští) a sirény. V telefonu měj nouzová upozornění zapnutá.
 
 ## Vývoj
 

@@ -21,6 +21,7 @@ import concurrent.futures as cf
 import email.utils
 import hashlib
 import html
+import io
 import json
 import mimetypes
 import os
@@ -34,7 +35,8 @@ import unicodedata
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+import zipfile
+from datetime import date, datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -192,8 +194,8 @@ def load_config() -> dict:
     return cfg
 
 
-def http_fetch(url: str, timeout: int = 25) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
+def http_fetch(url: str, timeout: int = 25, headers: dict | None = None) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*", **(headers or {})})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
@@ -645,6 +647,358 @@ def src_fuel(cfg, fetch, mem):
     return events, f"{p['name']}: otevřeno {len(open_st)}/{len(st)}, nafta {avg or '?'} €", {"points": summary}
 
 
+# ───────────────────── energie, internet, úřady, zemětřesení ─────────────────────
+
+def _num(x):
+    try:
+        return float(str(x).strip().replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
+def _due(mem, key, hours, now) -> bool:
+    """Je čas znovu stáhnout pomalu se měnící data? Šetří cizí servery i čas běhu."""
+    t = parse_date(mem.get(key))
+    return not t or now - t >= timedelta(hours=hours) - timedelta(minutes=2)
+
+
+AGSI = "https://agsi.gie.eu/api"
+GAS_ADVICE = ("Málo plynu v zásobnících znamená riziko omezení dodávek a tlak na elektrickou síť. "
+              "Měj zásoby na 72 h, záložní teplo a sleduj vyhlášení stupňů nouze.")
+
+
+def src_gas(cfg, fetch, mem):
+    """Zásobníky plynu (GIE AGSI+, klíč zdarma po registraci). Data jsou denní – stahují se jednou za pár hodin."""
+    c = cfg["gas"]
+    key = os.environ.get("AGSI_KEY", "")
+    if not key:
+        return [], "vypnuto – chybí klíč AGSI_KEY (zdarma po registraci na agsi.gie.eu)", {"zeme": []}
+    now = utcnow()
+    if _due(mem, "time", c.get("refresh_hours", 6), now) or not mem.get("zeme"):
+        out = []
+        for z in c["zeme"]:
+            code = z["code"].upper()
+            q = "type=eu" if code == "EU" else f"country={code.lower()}"
+            raw = json.loads(fetch(f"{AGSI}?{q}&size=10", headers={"x-key": key}))
+            rows = raw.get("data") if isinstance(raw, dict) else raw
+            rows = [r for r in (rows or []) if isinstance(r, dict) and _num(r.get("full")) is not None]
+            if not rows:
+                raise RuntimeError(f"AGSI {code}: odpověď bez dat")
+            r = max(rows, key=lambda r: str(r.get("gasDayStart", "")))
+            twh = _num(r.get("gasInStorage"))
+            net = (_num(r.get("withdrawal")) or 0) - (_num(r.get("injection")) or 0)   # GWh/den, + = odběr
+            out.append({"code": code, "name": z.get("name", code),
+                        "region": z.get("region", code if code in ("CZ", "DE") else "EU"),
+                        "day": r.get("gasDayStart", ""), "full": round(_num(r.get("full")), 1), "twh": twh,
+                        "net_gwh": round(net), "trend": _num(r.get("trend")),
+                        "days": round(twh * 1000 / net) if twh and net > 50 else None})
+        mem["zeme"], mem["time"] = out, iso(now)
+    events = []
+    for g in mem["zeme"]:
+        days = g.get("days")
+        lvl = 0
+        if g["full"] < c.get("pripravit_pod_pct", 10) or (days and days < c.get("pripravit_dni", 14)):
+            lvl = 2
+        elif g["full"] < c.get("sledovat_pod_pct", 20) or (days and days < c.get("sledovat_dni", 30)):
+            lvl = 1
+        g["level"] = lvl
+        if lvl:
+            dny = f", při dnešním odběru by vystačily na {days} dní" if days else ""
+            ev = make_event("Plyn (AGSI)", g["region"], lvl, f"Zásobníky plynu {g['name']}: {g['full']:.0f} %{dny}",
+                            url="https://agsi.gie.eu/", eid=f"gas:{g['code']}:{lvl}", detail=GAS_ADVICE)
+            events.append(ev)
+    info = ", ".join(f"{g['code']} {g['full']:.0f} %" for g in mem["zeme"])
+    return events, info, {"zeme": mem["zeme"], "time": mem.get("time", "")}
+
+
+IODA = "https://api.ioda.inetintel.cc.gatech.edu/v2"
+IODA_NOISY = {"merit-nt", "ucsd-nt"}   # teleskopy – samy o sobě často falešný poplach
+IODA_NAMES = {"bgp": "směrování BGP", "ping-slash24": "aktivní měření", "merit-nt": "teleskop", "ucsd-nt": "teleskop",
+              "gtr": "provoz Google", "gtr-norm": "provoz Google"}
+INTERNET_ADVICE = ("Celostátní výpadek internetu bývá první známkou blackoutu nebo kyberútoku. "
+                   "Ověř to rádiem, nabij powerbanky a natankuj.")
+
+
+def src_ioda(cfg, fetch):
+    """Výpadky internetu celých zemí (IODA, Georgia Tech). Kritický pokles ve ≥2 měřeních = rozsáhlý výpadek."""
+    c = cfg["internet"]
+    now = utcnow()
+    until = int(now.timestamp())
+    frm = until - int(c.get("okno_hodin", 6) * 3600)
+    fresh = c.get("cerstve_hodin", 2) * 3600
+
+    def one(z):
+        url = f"{IODA}/outages/alerts?entityType=country&entityCode={z['code']}&from={frm}&until={until}&limit=500"
+        raw = json.loads(fetch(url, timeout=20))
+        data = raw.get("data") if isinstance(raw, dict) else raw
+        if isinstance(data, dict):
+            data = data.get("alerts") or data.get("data") or []
+        latest = {}
+        for a in data or []:
+            if not isinstance(a, dict):
+                continue
+            ds, t = a.get("datasource"), a.get("time")
+            if ds and isinstance(t, (int, float)) and (ds not in latest or t > latest[ds][0]):
+                latest[ds] = (t, str(a.get("level", "")).lower())
+        down = sorted(ds for ds, (t, lv) in latest.items() if lv == "critical" and until - t <= fresh)
+        return z, down
+
+    out, events, errors = [], [], []
+    with cf.ThreadPoolExecutor(max_workers=5) as ex:
+        for fut in [ex.submit(one, z) for z in c["zeme"]]:
+            try:
+                z, down = fut.result()
+            except Exception as e:
+                errors.append(type(e).__name__)
+                continue
+            core = [d for d in down if d not in IODA_NOISY]
+            lvl = 2 if (len(down) >= 2 and core) else 1 if core else 0
+            name = z.get("name", z["code"])
+            if lvl:
+                srcs = ", ".join(IODA_NAMES.get(d, d) for d in down)
+                tail = "" if lvl == 2 else " Jedno měření může být chyba – ověř."
+                ev = make_event("IODA internet", z.get("region", z["code"]), lvl,
+                                f"Výpadek internetu – {name}: kritický pokles ({srcs}).{tail}",
+                                url=f"https://ioda.inetintel.cc.gatech.edu/country/{z['code']}",
+                                eid=f"ioda:{z['code']}:{lvl}", detail=INTERNET_ADVICE)
+                if lvl >= 2:
+                    ev["advice"] = INTERNET_ADVICE
+                events.append(ev)
+            out.append({"code": z["code"], "name": name, "down": down, "level": lvl})
+    if c["zeme"] and not out:
+        raise RuntimeError("IODA neodpověděla: " + ", ".join(errors))
+    bad = [o["code"] for o in out if o["level"]]
+    return events, f"{len(out)} zemí, výpadek: {', '.join(bad) or 'nikde'}", {"zeme": out, "time": iso(now)}
+
+
+GDELT = "https://api.gdeltproject.org/api/v2/doc/doc"
+
+
+def gdelt_points(raw: bytes) -> list:
+    try:
+        j = json.loads(raw)
+    except ValueError:
+        raise RuntimeError("GDELT: " + raw[:120].decode("utf-8", "ignore").strip())
+    pts = []
+    for series in j.get("timeline") or []:
+        for d in series.get("data") or []:
+            t, v = d.get("date"), d.get("value")
+            try:
+                dt = datetime.strptime(str(t), "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+            except ValueError:
+                dt = parse_date(t)
+            if dt and isinstance(v, (int, float)):
+                pts.append((dt, float(v)))
+        break   # první řada = objem zpráv
+    return sorted(pts)
+
+
+def gdelt_spike(pts, now, window_h=6):
+    """(teď, normál) – průměr posledních hodin proti mediánu denních průměrů předchozích dní."""
+    recent = [v for t, v in pts if now - t <= timedelta(hours=window_h)]
+    days = {}
+    for t, v in pts:
+        if now - t > timedelta(hours=24):
+            days.setdefault(t.date(), []).append(v)
+    means = sorted(sum(v) / len(v) for v in days.values())
+    if not recent or len(means) < 3:
+        return None
+    return sum(recent) / len(recent), means[len(means) // 2]
+
+
+def src_gdelt(cfg, fetch, mem):
+    """Prudký nárůst světových zpráv na téma (GDELT, 65 jazyků). Každý běh jeden dotaz – GDELT omezuje četnost."""
+    c = cfg["gdelt"]
+    now = utcnow()
+    queries = c["dotazy"]
+    res = mem.setdefault("q", {})
+    i = mem.get("i", 0) % len(queries)
+    mem["i"] = i + 1
+    q = queries[i]
+    url = (f"{GDELT}?query={urllib.parse.quote(q['dotaz'])}&mode=timelinevol&timespan={c.get('timespan', '14d')}"
+           f"&format=json")
+    pts = gdelt_points(fetch(url, timeout=30))
+    sp = gdelt_spike(pts, now, c.get("okno_hodin", 6))
+    if sp:
+        cur, base = sp
+        ratio = cur / max(base, c.get("min_normal", 0.0005))
+        res[q["id"]] = {"name": q["nazev"], "cur": round(cur, 5), "base": round(base, 5), "ratio": round(ratio, 1),
+                        "time": iso(now)}
+    events = []
+    for qq in queries:
+        r = res.get(qq["id"])
+        if not r or now - (parse_date(r["time"]) or now) > timedelta(hours=3):
+            continue
+        if r["ratio"] >= qq.get("pomer", c.get("pomer", 4)) and r["cur"] >= qq.get("min", c.get("min", 0.02)):
+            events.append(make_event("GDELT svět", qq.get("region", "EU"), 1,
+                                     f"Svět o tom najednou píše víc: {qq['nazev']} ({r['ratio']:.0f}× víc zpráv než obvykle)",
+                                     url=f"https://api.gdeltproject.org/api/v2/doc/doc?query={urllib.parse.quote(qq['dotaz'])}&mode=artlist&timespan=24h",
+                                     eid=f"gdelt:{qq['id']}",
+                                     detail="Samo o sobě to neznamená nebezpečí – podívej se do zpráv, co se děje."))
+    info = ", ".join(f"{r['name']} {r['ratio']}×" for r in res.values()) or "zatím bez dat"
+    return events, info, {"dotazy": [{"id": qq["id"], **res[qq["id"]]} for qq in queries if qq["id"] in res]}
+
+
+NUKIB = "https://nukib.gov.cz/cs/infoservis/aktuality/"
+
+
+def src_nukib(cfg, fetch, mem):
+    """Úřední varování NÚKIB. Varuje zřídka, takže nové varování před útoky je signál."""
+    c = cfg["nukib"]
+    now = utcnow()
+    page = fetch(c.get("url", NUKIB)).decode("utf-8", "ignore")
+    items = {}
+    for m in re.finditer(r'<a[^>]+href="([^"]*/infoservis/aktuality/(\d+)-[^"#?]+)"[^>]*>(.*?)</a>', page, re.S | re.I):
+        href, iid, inner = m.groups()
+        title = re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", inner))).strip()
+        if len(title) >= 8 and iid not in items:
+            items[iid] = (title, urllib.parse.urljoin("https://nukib.gov.cz/", href))
+    if not items:
+        raise RuntimeError("na stránce nejsou aktuality – změnil se web?")
+    match = re.compile(c.get("match", r"varovan"))
+    threat = re.compile(c.get("hrozba", r"utok|hrozb[a-z]* utok|konflikt|valk|rusk|kriticke infrastruktur|energet|nemocnic|sabotaz"))
+    active = mem.setdefault("active", {})
+    if mem.get("seen") is None:          # první běh = výchozí stav, staré zprávy nehlásit
+        mem["seen"] = sorted(items, key=int)[-300:]
+    else:
+        seen = set(mem["seen"])
+        for iid, (title, url) in items.items():
+            if iid in seen:
+                continue
+            seen.add(iid)
+            t = norm(title)
+            if match.search(t) and threat.search(t):
+                active[iid] = {"title": title, "url": url, "first": iso(now)}
+        mem["seen"] = sorted(seen, key=int)[-300:]
+    hold = timedelta(days=c.get("drzet_dni", 7))
+    for k in [k for k, a in active.items() if now - (parse_date(a["first"]) or now) > hold]:
+        del active[k]
+    events = [make_event("NÚKIB", "CZ", 1, f"Varování NÚKIB: {a['title']}", url=a["url"], eid=f"nukib:{k}",
+                         when=parse_date(a["first"]),
+                         detail="Úřední kybernetické varování. Měj zálohy a hotovost, výpadky služeb jsou možné.")
+              for k, a in active.items()]
+    return events, f"{len(items)} aktualit, aktivní varování: {len(active)}"
+
+
+PSP_TISKY = "https://www.psp.cz/eknih/cdrom/opendata/tisky.zip"
+PSP_RULES = [
+    {"match": r"(vyhlas|vyhlaseni)[a-z ]{0,25}(stavu ohrozeni statu|valecneho stavu)", "level": 2},
+    {"match": r"stav[a-z]* ohrozeni statu|valecn[a-z]* stav|mobilizac|brann[a-z]* pohotovost", "level": 1},
+]
+
+
+def src_psp(cfg, fetch, mem):
+    """Nové sněmovní tisky (otevřená data PSP, denně). Vládní návrh na stav ohrožení státu se tu objeví dřív než ve zprávách."""
+    c = cfg["psp"]
+    now = utcnow()
+    rules = [(re.compile(r["match"]), r["level"]) for r in c.get("pravidla", PSP_RULES)]
+    if _due(mem, "time", c.get("refresh_hours", 6), now):
+        zf = zipfile.ZipFile(io.BytesIO(fetch(c.get("url", PSP_TISKY), timeout=60)))
+        name = next((n for n in zf.namelist() if n.lower().rsplit("/", 1)[-1] == "tisky.unl"), None)
+        if not name:
+            raise RuntimeError("v tisky.zip chybí tisky.unl")
+        rows = {}
+        for line in zf.read(name).decode("cp1250", "replace").splitlines():
+            f = line.split("|")
+            if len(f) < 5 or not f[0].strip().isdigit():
+                continue
+            rows[int(f[0])] = max((x.strip() for x in f[1:]), key=len)   # nejdelší pole = úplný název tisku
+        if not rows:
+            raise RuntimeError("tisky.unl je prázdný")
+        top = max(rows)
+        if mem.get("max_id") is not None:
+            hits = mem.setdefault("hits", {})
+            for tid in sorted(t for t in rows if t > mem["max_id"]):
+                t = norm(rows[tid])
+                lvl = next((lv for rx, lv in rules if rx.search(t)), 0)
+                if lvl:
+                    hits[str(tid)] = {"title": rows[tid][:300], "level": lvl, "seen": iso(now)}
+        mem["max_id"] = max(top, mem.get("max_id") or 0)
+        mem["time"], mem["count"] = iso(now), len(rows)
+    hits = mem.setdefault("hits", {})
+    hold = timedelta(days=c.get("drzet_dni", 14))
+    for k in [k for k, h in hits.items() if now - (parse_date(h["seen"]) or now) > hold]:
+        del hits[k]
+    events = [make_event("Sněmovna", "CZ", h["level"], f"Nový sněmovní tisk: {h['title']}",
+                         url="https://www.psp.cz/sqw/sntisk.sqw?o=10", eid=f"psp:{k}", when=parse_date(h["seen"]),
+                         detail="Úřední návrh v Poslanecké sněmovně – ověř ve zprávách, co přesně vláda navrhuje.")
+              for k, h in hits.items()]
+    return events, f"{mem.get('count', 0)} tisků, hlídané: {len(hits)}"
+
+
+EASA_FEED = "https://www.easa.europa.eu/en/domains/air-operations/czibs/feed.xml"
+EASA_WATCH = [   # (vzor v názvu, oblast, stupeň) – první shoda vyhrává
+    {"match": r"czech|german", "region": None, "level": 3},
+    {"match": r"poland|polish|slovak|austria|hungar|lithuan|latvia|eston|baltic|finland|romania|bulgaria|denmark|"
+              r"norway|sweden|netherlands|belgium|france|italy|europe", "region": "EU", "level": 2},
+    {"match": r"spain|spanish", "region": "ES", "level": 2},
+    {"match": r"portug", "region": "PT", "level": 2},
+    {"match": r"ireland|irish", "region": "IE", "level": 2},
+    {"match": r"belarus|moldov|kaliningrad", "region": "EU", "level": 1},
+]
+
+
+def src_easa(cfg, fetch):
+    """Bulletiny EASA o konfliktních zónách. Nový bulletin pro vzdušný prostor v Evropě = velmi vážný signál."""
+    c = cfg["easa"]
+    items = parse_feed(fetch(c.get("url", EASA_FEED)))
+    watch = [(re.compile(w["match"]), w.get("region"), w["level"]) for w in c.get("sledovat", EASA_WATCH)]
+    events = []
+    for title, link, when in items:
+        t = norm(title)
+        for rx, region, lvl in watch:
+            if rx.search(t):
+                reg = region or ("CZ" if "czech" in t else "DE")
+                events.append(make_event("EASA letectví", reg, lvl, f"EASA varuje letecké dopravce: {title}",
+                                         url=link, eid=f"easa:{short_hash(link or title)}", when=when,
+                                         detail="Bulletin o konfliktní zóně – riziko pro civilní letadla nad touto oblastí."))
+                break
+    return events, f"{len(items)} aktivních bulletinů, v Evropě: {len(events)}"
+
+
+EMSC = "https://www.seismicportal.eu/fdsnws/event/1/query"
+QUAKE_ADVICE = ("Po silném otřesu: zkontroluj plyn, komín a praskliny ve zdech, drž se pokynů HZS. "
+                "Zemětřesné roje na Chebsku bývají slabé a k útěku obvykle není důvod.")
+
+
+def src_emsc(cfg, fetch):
+    """Zemětřesení v okolí domova (EMSC). Chebsko a Vogtland jsou nejaktivnější seismická oblast v Česku."""
+    c = cfg["zemetreseni"]
+    now = utcnow()
+    start = (now - timedelta(days=c.get("dni", 7))).strftime("%Y-%m-%dT%H:%M:%S")
+    quakes, events = [], []
+    for z in c["zony"]:
+        lon1, lat1, lon2, lat2 = z["bbox_lon_lat"]
+        url = (f"{EMSC}?format=json&minlat={lat1}&maxlat={lat2}&minlon={lon1}&maxlon={lon2}"
+               f"&minmag={c.get('min_mag', 2.0)}&starttime={start}&orderby=time&limit=50")
+        raw = fetch(url, timeout=20)
+        feats = json.loads(raw).get("features", []) if raw.strip() else []   # 204 = žádné zemětřesení
+        for f in feats:
+            p = f.get("properties") or {}
+            mag, t = _num(p.get("mag")), parse_date(p.get("time"))
+            if mag is None or not t:
+                continue
+            place = (p.get("flynn_region") or "").title()
+            depth = _num(p.get("depth"))
+            unid = p.get("unid") or f.get("id") or short_hash(f"{t}{mag}")
+            quakes.append({"zone": z["name"], "mag": round(mag, 1), "time": iso(t), "place": place,
+                           "depth": round(depth) if depth is not None else None})
+            lvl = 2 if mag >= c.get("pripravit_od", 5.0) else 1 if mag >= c.get("sledovat_od", 3.5) else 0
+            if lvl and now - t <= timedelta(hours=c.get("drzet_hodin", 24)):
+                hl = f", hloubka {depth:.0f} km" if depth is not None else ""
+                ev = make_event("EMSC zemětřesení", z.get("region", "CZ"), lvl,
+                                f"Zemětřesení M{mag:.1f} – {z['name']} ({place}{hl})",
+                                url=f"https://www.seismicportal.eu/eventdetails.html?unid={unid}",
+                                eid=f"emsc:{unid}", when=t, detail=QUAKE_ADVICE)
+                if lvl >= 2:
+                    ev["advice"] = QUAKE_ADVICE
+                events.append(ev)
+    quakes.sort(key=lambda q: q["time"], reverse=True)
+    strongest = max((q["mag"] for q in quakes), default=None)
+    info = f"{len(quakes)} otřesů za {c.get('dni', 7)} dní" + (f", nejsilnější M{strongest}" if strongest else "")
+    return events, info, {"quakes": quakes[:10], "days": c.get("dni", 7), "min_mag": c.get("min_mag", 2.0)}
+
+
 SOURCES = {
     "nina":           ("NINA – místa staveb a hranice", src_nina, "nina"),
     "nina_national":  ("NINA – celé Německo", src_nina_national, "nina_national"),
@@ -657,6 +1011,13 @@ SOURCES = {
     "chmi":           ("ČHMÚ – vodočty", src_chmi, "chmi_hydro"),
     "route":          ("Dálnice na trase (DE)", src_route, "route_status"),
     "fuel":           ("Palivo na trase (DE)", src_fuel, "fuel"),
+    "gas":            ("Zásobníky plynu (AGSI)", src_gas, "gas"),
+    "ioda":           ("Výpadky internetu (IODA)", src_ioda, "internet"),
+    "gdelt":          ("Objem světových zpráv (GDELT)", src_gdelt, "gdelt"),
+    "nukib":          ("NÚKIB – kybernetická varování", src_nukib, "nukib"),
+    "psp":            ("Sněmovní tisky (PSP)", src_psp, "psp"),
+    "easa":           ("EASA – konfliktní zóny", src_easa, "easa"),
+    "emsc":           ("Zemětřesení (EMSC)", src_emsc, "zemetreseni"),
 }
 
 
@@ -751,6 +1112,116 @@ def run_news(cfg, fetch, state, now):
     return events, health
 
 
+# ───────────────────────── připravenost (doklady, lhůty, seznamy) ─────────────────────────
+
+DEFAULT_CHECKLISTS = [
+    {"id": "zasoby", "nazev": "Nouzové zásoby na 72 hodin", "polozky": [
+        "Pitná voda – 2 litry na osobu a den, na 3 dny", "Kanystry nebo jiné uzavíratelné nádoby na vodu",
+        "Trvanlivé jídlo, které nemusíš vařit", "Lékárnička a pravidelné léky aspoň na týden",
+        "Rádio a svítilna na baterie, náhradní baterie", "Hotovost v mincích a menších bankovkách",
+        "Nabité powerbanky", "Plynový vařič a kartuše", "Hygienické potřeby a pytle na odpad",
+        "Kopie důležitých dokumentů"]},
+    {"id": "zavazadlo", "nazev": "Evakuační zavazadlo u dveří", "polozky": [
+        "Doklady všech, platební karty, hotovost v CZK i EUR", "Lékárnička a léky",
+        "Telefon, nabíječka a powerbanka", "Rádio a svítilna", "Voda a jídlo na cestu",
+        "Teplé a náhradní oblečení, pláštěnka, pevné boty", "Deka nebo spacák", "Hygienické potřeby",
+        "Zavazadlo označené jménem a telefonem"]},
+    {"id": "dite", "nazev": "Pro malého", "polozky": [
+        "Pleny a vlhčené ubrousky na několik dní", "Jídlo, pití a lahvička nebo hrneček",
+        "Náhradní oblečení a teplá vrstva", "Dětské léky podle doporučení lékaře", "Oblíbená hračka nebo knížka",
+        "Kartička se jmény a telefony rodičů (pro případ, že se rozdělíte)", "Autosedačka a nosítko"]},
+    {"id": "auto", "nazev": "Auto", "polozky": [
+        "Nádrž aspoň napůl, při stupni Sleduj do plna", "Kanystr na palivo (podle pravidel v zemích po cestě)",
+        "Lékárnička, reflexní vesty pro všechny, trojúhelník", "Nálepka Crit'Air a registrace do ZBE (viz výše)",
+        "Tištěná mapa Evropy", "Tažné lano a startovací kabely", "Doklady k autu a zelená karta"]},
+    {"id": "telefon", "nazev": "Telefon a spojení", "polozky": [
+        "Zapnutá nouzová (bezdrátová) upozornění – na iPhonu v Nastavení → Oznámení",
+        "Aplikace NINA (Německo) a Záchranka (Česko)", "Trasy uložené do offline map (tlačítko GPX u trasy)",
+        "Domluvené místo srazu pro případ, že nefunguje signál", "Důležitá čísla zapsaná i na papíře",
+        "Tento web přidaný na plochu – ukáže poslední stav i bez signálu"]},
+]
+PREP_LABEL = {"propadle": "propadlé", "brzy": "brzy končí", "chybi_datum": "chybí datum", "nevyrizeno": "nevyřízeno",
+              "volitelne": "až bude potřeba", "ok": "v pořádku"}
+
+
+def fmt_date(s) -> str:
+    try:
+        d = date.fromisoformat(str(s))
+        return f"{d.day}. {d.month}. {d.year}"
+    except ValueError:
+        return str(s or "")
+
+
+def preparedness(cfg, now) -> list:
+    """Stav položek z `pripravenost.polozky`: buď mají `plati_do` (hlídá se platnost), nebo `hotovo` (jednorázový úkol)."""
+    c = cfg.get("pripravenost") or {}
+    today = now.astimezone(local_tz(cfg)).date()
+    warn = c.get("varovat_dni", 60)
+    out = []
+    for p in c.get("polozky", []):
+        days = None
+        if "plati_do" in p:
+            try:
+                d = date.fromisoformat(str(p["plati_do"])) if p.get("plati_do") else None
+            except ValueError:
+                d = None
+            if d is None:
+                st = "chybi_datum"
+            else:
+                days = (d - today).days
+                st = "propadle" if days < 0 else "brzy" if days <= warn else "ok"
+        elif p.get("hotovo"):
+            st = "ok"
+        else:
+            st = "volitelne" if p.get("volitelne") else "nevyrizeno"
+        out.append({"id": p.get("id") or short_hash(p.get("nazev", "")), "nazev": p.get("nazev", ""),
+                    "pozn": p.get("pozn", ""), "odkaz": p.get("odkaz", ""), "plati_do": p.get("plati_do"),
+                    "dni": days, "stav": st, "stav_text": PREP_LABEL[st]})
+    return out
+
+
+def prep_label(i) -> str:
+    if i["stav"] == "propadle":
+        return f"{i['nazev']} – propadlé od {fmt_date(i['plati_do'])}"
+    if i["stav"] == "brzy":
+        return f"{i['nazev']} – platí ještě {i['dni']} dní (do {fmt_date(i['plati_do'])})"
+    return f"{i['nazev']} – {PREP_LABEL[i['stav']]}"
+
+
+def prep_problems(items, limit=4) -> list:
+    """Co by tě zdrželo při odjezdu: propadlé, končící do 30 dní a nevyřízené."""
+    bad = [i for i in items if i["stav"] in ("propadle", "nevyrizeno")
+           or (i["stav"] == "brzy" and i["dni"] is not None and i["dni"] <= 30)]
+    return [prep_label(i) for i in bad][:limit]
+
+
+def remind_preparedness(cfg, state, items, now):
+    """Připomínky platnosti (výchozí 60, 30, 7 dní a den konce) – jedna souhrnná zpráva."""
+    c = cfg.get("pripravenost") or {}
+    thresholds = c.get("upozornit_dni", [60, 30, 7, 0])
+    sent = state.setdefault("prep_reminded", {})
+    due = []
+    for i in items:
+        if i["dni"] is None:
+            continue
+        hit = [t for t in thresholds if i["dni"] <= t]
+        if not hit:
+            continue
+        t, key = min(hit), f"{i['id']}|{i['plati_do']}"
+        if key in sent and sent[key] <= t:
+            continue
+        sent[key] = t
+        due.append(i)
+    keep = {f"{i['id']}|{i['plati_do']}" for i in items}
+    for k in [k for k in sent if k not in keep]:
+        del sent[k]
+    if due:
+        lines = [("⛔ " if i["dni"] < 0 else "📄 ") + prep_label(i) for i in due]
+        lines.append("Vyřiď to teď v klidu – v krizi úřady nestíhají.")
+        notify(state, cfg, "📄 Doklady a příprava na odjezd", "\n".join(lines),
+               1 if any(i["dni"] <= 7 for i in due) else 0, cfg.get("dashboard_url", ""))
+
+
 # ───────────────────────── notifikace ─────────────────────────
 
 def channels_configured():
@@ -840,7 +1311,8 @@ def route_issues(cfg, route_extra, trasa_id=None, limit=4) -> list:
 def alert_context(cfg, state, region_levels):
     rec = recommend_refuge(cfg, region_levels)
     route = state.get("extras", {}).get("route")
-    return {"recommended": rec, "route_issues": route_issues(cfg, route, rec.get("trasa") if rec else None)}
+    return {"recommended": rec, "route_issues": route_issues(cfg, route, rec.get("trasa") if rec else None),
+            "prep": prep_problems(state.get("prep_items", []))}
 
 
 def context_lines(ctx) -> list:
@@ -854,6 +1326,9 @@ def context_lines(ctx) -> list:
     issues = (ctx or {}).get("route_issues") or []
     if issues:
         lines.append("Na trase: " + "; ".join(issues))
+    prep = (ctx or {}).get("prep") or []
+    if prep:
+        lines.append("Než vyrazíš: " + "; ".join(prep))
     return lines
 
 
@@ -999,8 +1474,10 @@ def run_cycle(cfg, state, fetch=http_fetch, do_notify=True, now=None):
     region_levels = {r: max([e["level"] for e in events if e["region"] == r] or [0]) for r in region_order(cfg)}
     overall = max(region_levels[r] for r in HOME_REGIONS)
 
+    state["prep_items"] = preparedness(cfg, now)
     if do_notify:
         handle_notifications(cfg, state, events, overall, region_levels, now)
+        remind_preparedness(cfg, state, state["prep_items"], now)
 
     status = build_status(cfg, state, events, region_levels, overall, now)
     atomic_write(DATA / "status.json", status)
@@ -1092,8 +1569,11 @@ def handle_notifications(cfg, state, events, overall, region_levels, now):
         if lt.weekday() == hb.get("weekday", 6) and lt.hour == hb.get("hour", 18) and state.get("heartbeat_week") != week:
             on, oe = LEVELS[overall]
             ok = sum(1 for s in state.get("sources", {}).values() if s.get("ok"))
-            notify(state, cfg, "✅ Hlídač běží", f"Stav doma: {oe} {on}. Funkčních zdrojů: {ok}/{len(state.get('sources', {}))}.", 0,
-                   cfg.get("dashboard_url", ""))
+            msg = f"Stav doma: {oe} {on}. Funkčních zdrojů: {ok}/{len(state.get('sources', {}))}."
+            todo = [i for i in state.get("prep_items", []) if i["stav"] in ("propadle", "nevyrizeno", "chybi_datum")]
+            if todo:
+                msg += f"\nPříprava – zbývá vyřídit {len(todo)}: " + "; ".join(i["nazev"] for i in todo[:5])
+            notify(state, cfg, "✅ Hlídač běží", msg, 0, cfg.get("dashboard_url", ""))
             state["heartbeat_week"] = week
 
     for i in [i for i, t in notified.items() if now - (parse_date(t) or now) > timedelta(days=14)]:
@@ -1138,6 +1618,12 @@ def build_status(cfg, state, events, region_levels, overall, now):
         "rivers": (extras.get("chmi") or {}).get("rivers", []),
         "radiation": extras.get("bfs") or {},
         "fuel": (extras.get("fuel") or {}).get("points", {}),
+        "gas": extras.get("gas") or {},
+        "internet": extras.get("ioda") or {},
+        "gdelt": (extras.get("gdelt") or {}).get("dotazy", []),
+        "quakes": extras.get("emsc") or {},
+        "pripravenost": state.get("prep_items", []),
+        "seznamy": cfg.get("seznamy") or DEFAULT_CHECKLISTS,
         "history": list(reversed(state.get("history", [])))[:20],
         "channels": channels_configured(),
     }
@@ -1319,7 +1805,17 @@ def demo_status(cfg):
             {"name": "Hranice ČR – Sasko a Bavorsko", "n": 64, "median": 0.098, "max": 0.148, "max_name": "Erlbach", "rising": 0, "level": 0},
             {"name": "Šumava – směr Temelín", "n": 21, "median": 0.112, "max": 0.161, "max_name": "Bayerisch Eisenstein", "rising": 0, "level": 0}],
             "national": {"name": "Celé Německo", "n": 1688, "median": 0.081, "max": 0.192, "max_name": "Feldberg", "level": 0}},
+        "gas": {"time": iso(now), "zeme": [
+            {"code": "DE", "name": "Německo", "region": "DE", "day": "2026-11-10", "full": 58.4, "twh": 146.2, "net_gwh": 2210, "days": 66, "trend": -0.9},
+            {"code": "CZ", "name": "Česko", "region": "CZ", "day": "2026-11-10", "full": 71.2, "twh": 31.0, "net_gwh": 310, "days": 100, "trend": -0.7},
+            {"code": "EU", "name": "EU", "region": "EU", "day": "2026-11-10", "full": 69.9, "twh": 791.5, "net_gwh": 7100, "days": 111, "trend": -0.6}]},
+        "ioda": {"time": iso(now), "zeme": [{"code": c, "name": n, "down": [], "level": 0}
+                                             for c, n in (("CZ", "Česko"), ("DE", "Německo"), ("ES", "Španělsko"))]},
+        "gdelt": {"dotazy": [{"id": "nato", "name": "Útok na NATO", "cur": 0.012, "base": 0.006, "ratio": 2.0, "time": iso(now)}]},
+        "emsc": {"days": 7, "min_mag": 2.0, "quakes": [
+            {"zone": "Chebsko a Vogtland", "mag": 2.4, "time": iso(now - timedelta(days=2)), "place": "Czech Republic", "depth": 9}]},
     }
+    state["prep_items"] = preparedness(cfg, now)
     rl = {r: max([e["level"] for e in events if e["region"] == r] or [0]) for r in region_order(cfg)}
     overall = max(rl[r] for r in HOME_REGIONS)
     return build_status(cfg, state, events, rl, overall, now)

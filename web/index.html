@@ -110,6 +110,11 @@ h2{font:700 1.65rem/1.1 var(--cond);margin:0 0 12px}
 .fuel{list-style:none;margin:0;padding:0;font-size:.95rem}
 .fuel li{padding:4px 0}
 .refuge-head{margin:14px 0 0;padding-top:12px;border-top:2px solid var(--line);color:var(--muted);font-size:.95rem}
+.rv-info a{white-space:nowrap}
+.prep-warn{margin:0 0 12px;padding:10px 12px;border-radius:6px;background:var(--raise);border-left:4px solid var(--l1);font-size:.95rem}
+.lists details{padding:10px 0}
+.lists summary{font-size:1.15rem}
+.lists .todo{margin-top:8px}
 
 /* události */
 .events{list-style:none;margin:0;padding:0}
@@ -202,6 +207,21 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     <div id="plan"></div>
   </section>
 
+  <section aria-labelledby="h-sig" id="s-sig" hidden>
+    <h2 id="h-sig">Další signály</h2>
+    <div id="signals"></div>
+  </section>
+
+  <section aria-labelledby="h-prep" id="s-prep" hidden>
+    <h2 id="h-prep">Připravenost</h2>
+    <p class="sub" id="prep-head">Doklady a auto</p>
+    <ul class="rivers" id="prep"></ul>
+    <p class="sub">Seznamy na 72 hodin</p>
+    <div class="lists" id="lists"></div>
+    <p class="attr">Zaškrtnutí si pamatuje jen tento telefon. Podklady: příručka
+      <a href="https://www.72h.gov.cz/" target="_blank" rel="noopener">72 hodin</a> Ministerstva vnitra.</p>
+  </section>
+
   <section>
     <details id="d-hist"><summary>Poslední upozornění <small id="hist-count"></small></summary><ul class="hist" id="history"></ul></details>
     <details id="d-src"><summary>Zdroje <small id="src-count"></small></summary><ul class="src" id="sources"></ul></details>
@@ -227,6 +247,7 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
   let token = qs.get("k") || store.get("hk") || "";
   let mode = store.get("mode");   // "plain" = vlastní server, "enc" = šifrovaný stav na GitHub Pages
   let last = null;
+  let rendered = false;           // rozbalené části se při obnově každou minutu nezavírají
 
   function el(tag, attrs, ...kids){
     const n = document.createElement(tag);
@@ -243,6 +264,9 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     const today = new Date().toDateString() === d.toDateString();
     return d.toLocaleString("cs-CZ", today ? {hour:"2-digit",minute:"2-digit"} : {day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"});
   };
+  const fmtDate = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ""); return m ? `${+m[3]}. ${+m[2]}. ${m[1]}` : (s || ""); };
+  const fmtNum = x => (x > 0 ? "+" : "") + String(x).replace("-", "−").replace(".", ",");
+  const lamp = lv => el("span", {class:"lamp", "data-level": lv || 0, "aria-hidden":"true"});
   const ago = iso => {
     const m = Math.round((Date.now() - new Date(iso)) / 60000);
     if (!isFinite(m)) return "";
@@ -282,6 +306,8 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
 
   function render(s){
     last = s;
+    const wasOpen = new Set([...document.querySelectorAll("details[data-k]")].filter(d => d.open).map(d => d.dataset.k));
+    const openState = (d, key, def) => { d.dataset.k = key; d.open = rendered ? wasOpen.has(key) : def; return d; };
     const o = s.overall.level;
     $("placard").dataset.level = o;
     document.querySelectorAll(".scale i").forEach((i,n) => i.classList.toggle("on", n <= o));
@@ -391,6 +417,12 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     } else if (p.cil) {
       plan.append(el("p", null, "Cíl: ", el("strong", {text:p.cil})));
     }
+    const prepItems = s.pripravenost || [];
+    const prepBad = prepItems.filter(i => i.stav === "propadle" || i.stav === "nevyrizeno" || (i.stav === "brzy" && i.dni <= 30));
+    if (prepBad.length) {
+      plan.append(el("p", {class:"prep-warn"}, `Než vyrazíš, vyřiď: ${prepBad.slice(0, 4).map(i => i.nazev).join("; ")}`,
+        prepBad.length > 4 ? ` a další (${prepBad.length - 4})` : "", ". ", el("a", {href:"#s-prep", text:"Připravenost"})));
+    }
     const trasy = (p.trasy || []).slice();
     if (rec && rec.trasa) trasy.sort((a, b) => (b.id === rec.trasa) - (a.id === rec.trasa));
     trasy.forEach((t, i) => {
@@ -405,6 +437,10 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
           el("span", {text: issues.length ? `Komplikace na německých dálnicích${when}:` : `Dálnice ${t.dalnice.join(", ")} bez uzavírek a velkých kolon${when}.`})));
         if (issues.length) body.append(el("ul", {class:"issues"}, ...issues.map(x => el("li", {text:x}))));
       }
+      if ((t.zony || []).length) {
+        body.append(el("p", {class:"sub", text:"Pozor na trase"}),
+          el("ul", {class:"issues"}, ...t.zony.map(z => el("li", null, el("strong", {text: `${z.misto}: `}), z.pozn))));
+      }
       if (pts.length >= 2) {
         const gpxBtn = el("button", {type:"button", class:"btn", text:"Uložit do offline map (GPX)"});
         gpxBtn.addEventListener("click", () => saveGpx(t, pts));
@@ -412,9 +448,7 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
           el("a", {class:"btn", href: gmaps(pts), target:"_blank", rel:"noopener", text:"Otevřít v Google Mapách"})));
       }
       const label = t.nazev + (rec && t.id === rec.trasa ? " (doporučená)" : "");
-      const d = el("details", {class:"trasa"}, el("summary", {text: label}), body);
-      if (i === 0) d.open = true;
-      plan.append(d);
+      plan.append(openState(el("details", {class:"trasa"}, el("summary", {text: label}), body), `t:${t.id || i}`, i === 0));
     });
     if (!trasy.length && p.trasa) {
       plan.append(el("ol", {class:"route", "aria-label":"Hlavní trasa"},
@@ -432,6 +466,73 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
       if (v) dl.append(el("dt", {text:k}), el("dd", {text:v}));
     });
     plan.append(dl);
+
+    // další signály – plyn, internet, objem světových zpráv, zemětřesení
+    const sig = $("signals"); sig.replaceChildren();
+    const sigRow = (lv, name, val, info) => el("li", null, lamp(lv), el("span", {class:"r-name", text:name}),
+      el("span", {class:"rv-val", text:val}), el("span", {class:"rv-info", text:info}));
+    const gas = (s.gas && s.gas.zeme) || [];
+    if (gas.length) {
+      sig.append(el("p", {class:"sub", text:"Plyn v zásobnících"}), el("ul", {class:"rivers"}, ...gas.map(g => sigRow(g.level, g.name,
+        `${Math.round(g.full)} %`, [g.days ? `při dnešním odběru vystačí na ${g.days} dní` : (g.net_gwh < 0 ? "zásobníky se plní" : ""),
+          g.trend != null ? `${fmtNum(g.trend)} % za den` : "", g.day ? `stav k ${fmtDate(g.day)}` : ""].filter(Boolean).join(", ")))),
+        el("p", {class:"attr", text:"Data: GIE AGSI+. Dny = jak dlouho by zásobníky stačily bez dovozu při dnešním odběru."}));
+    }
+    const net = (s.internet && s.internet.zeme) || [];
+    if (net.length) {
+      sig.append(el("p", {class:"sub", text:"Internet celých zemí"}), el("ul", {class:"rivers"}, ...net.map(n => sigRow(n.level, n.name,
+        n.level ? "výpadek" : "v pořádku", n.down.length ? `kritický pokles: ${n.down.join(", ")}` : "bez kritického poklesu"))),
+        el("p", {class:"attr", text:"Data: IODA (Georgia Tech). Výpadek celé země bývá první známkou blackoutu nebo kyberútoku."}));
+    }
+    const gd = s.gdelt || [];
+    if (gd.length) {
+      sig.append(el("p", {class:"sub", text:"Kolik o tom píše svět"}), el("ul", {class:"rivers"}, ...gd.map(g => sigRow(g.ratio >= 4 ? 1 : 0, g.name,
+        `${String(g.ratio).replace(".", ",")}×`, g.ratio >= 2 ? "víc zpráv než obvykle" : "běžná úroveň"))),
+        el("p", {class:"attr", text:"Data: GDELT, zprávy v 65 jazycích. Poměr = posledních 6 hodin proti běžnému dni."}));
+    }
+    const qk = s.quakes || {};
+    if (Array.isArray(qk.quakes)) {
+      sig.append(el("p", {class:"sub", text:"Zemětřesení v okolí"}));
+      if (qk.quakes.length) {
+        sig.append(el("ul", {class:"rivers"}, ...qk.quakes.slice(0, 6).map(q => sigRow(q.mag >= 5 ? 2 : q.mag >= 3.5 ? 1 : 0,
+          `M${String(q.mag).replace(".", ",")} ${q.place || q.zone}`, fmtTime(q.time),
+          `${q.zone}` + (q.depth != null ? `, hloubka ${q.depth} km` : "")))));
+      } else {
+        sig.append(el("p", {class:"empty", text:`Za ${qk.days || 7} dní žádný otřes od M${String(qk.min_mag || 2).replace(".", ",")}.`}));
+      }
+      sig.append(el("p", {class:"attr", text:"Data: EMSC. Roje na Chebsku bývají slabé, cítit jsou zhruba od M3."}));
+    }
+    $("s-sig").hidden = !sig.childNodes.length;
+
+    // připravenost – doklady, auto, seznamy
+    const lists = s.seznamy || [];
+    $("s-prep").hidden = !prepItems.length && !lists.length;
+    $("prep-head").hidden = !prepItems.length;
+    const PREP_LVL = {propadle: 3, chybi_datum: 1, nevyrizeno: 1, volitelne: 0, ok: 0};
+    $("prep").replaceChildren(...prepItems.map(i => {
+      const lv = i.stav === "brzy" ? (i.dni <= 30 ? 2 : 1) : (PREP_LVL[i.stav] || 0);
+      const info = [];
+      if (i.dni != null) info.push(i.dni < 0 ? `propadlé ${-i.dni} dní` : `platí ještě ${i.dni} dní`);
+      if (i.pozn) info.push(i.pozn);
+      const infoEl = el("span", {class:"rv-info", text: info.join(". ")});
+      const u = safeUrl(i.odkaz);
+      if (u) infoEl.append(" ", el("a", {href:u, target:"_blank", rel:"noopener", text:"Otevřít web"}));
+      return el("li", null, lamp(lv), el("span", {class:"r-name", text:i.nazev}),
+        el("span", {class:"rv-val", text: i.plati_do ? fmtDate(i.plati_do) : i.stav_text}), infoEl);
+    }));
+    $("lists").replaceChildren(...lists.map(L => {
+      const key = it => `chk:${L.id}:${it}`;
+      const small = el("small");
+      const upd = () => { small.textContent = `${L.polozky.filter(it => store.get(key(it)) === "1").length} z ${L.polozky.length}`; };
+      const ul = el("ul", {class:"todo"}, ...L.polozky.map(it => {
+        const cb = el("input", {type:"checkbox"});
+        cb.checked = store.get(key(it)) === "1";
+        cb.addEventListener("change", () => { cb.checked ? store.set(key(it), "1") : store.del(key(it)); upd(); });
+        return el("li", null, el("label", null, cb, el("span", {text: it})));
+      }));
+      upd();
+      return openState(el("details", null, el("summary", null, L.nazev, small), ul), `l:${L.id}`, false);
+    }));
 
     // historie
     const hist = s.history || [];
@@ -453,6 +554,7 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     $("foot").textContent = s.channels && s.channels.length
       ? `Upozornění chodí přes ${s.channels.join(", ")}.`
       : "Upozornění zatím nejsou nastavená.";
+    rendered = true;
   }
 
   // Šifrovaný stav (GitHub Pages): PBKDF2-SHA256 → AES-256-GCM, klíčem je kód z odkazu.

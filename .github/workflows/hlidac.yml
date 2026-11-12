@@ -39,6 +39,7 @@ jobs:
       NTFY_SERVER: ${{ secrets.NTFY_SERVER }}
       HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
       TANKERKOENIG_KEY: ${{ secrets.TANKERKOENIG_KEY }}
+      AGSI_KEY: ${{ secrets.AGSI_KEY }}
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
