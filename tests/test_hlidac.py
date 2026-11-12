@@ -308,7 +308,8 @@ class TestSources(unittest.TestCase):
         self.assertEqual([(e["id"], e["level"]) for e in ev], [("nina:mow.DE-BY-X", 1)])
 
     def test_noaa(self):
-        ev, info = hlidac.src_noaa(CFG, FakeNet({"noaa": NOAA}))
+        ev, info, extra = hlidac.src_noaa(CFG, FakeNet({"noaa": NOAA}))
+        self.assertEqual((extra["now"], extra["max"], extra["day"]), (0, 5, "2026-11-13"))
         self.assertEqual(len(ev), 1)
         self.assertEqual((ev[0]["region"], ev[0]["level"]), ("EU", 2))
         self.assertIn("G5", ev[0]["title"])

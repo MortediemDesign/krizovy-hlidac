@@ -297,7 +297,7 @@ def src_noaa(cfg, fetch):
         if lvl:
             events.append(make_event("NOAA", "EU", lvl, f"Geomagnetická bouře G{g} ({label}) – riziko pro sítě",
                                      url="https://www.swpc.noaa.gov/", eid=f"noaa:G{g}:{key}"))
-    return events, f"teď G{now_g}, předpověď max G{max_fc}"
+    return events, f"teď G{now_g}, předpověď max G{max_fc}", {"now": now_g, "max": max_fc, "day": fc_day}
 
 
 def src_gdacs(cfg, fetch):
@@ -478,7 +478,8 @@ def src_bfs(cfg, fetch, mem):
         events.append(ev)
     national = {"name": "Celé Německo", **stats(stations), "level": 2 if nat_warn >= c["national_min_stations"] else 0} if stations else {}
     info = "; ".join(f"{z['name']}: max {z.get('max', 0):.2f} µSv/h ({z['n']} stanic)" for z in zone_out)
-    return events, f"{info}; v DE {len(stations)} stanic", {"zones": zone_out, "national": national, "time": iso(latest)}
+    return events, f"{info}; v DE {len(stations)} stanic", {"zones": zone_out, "national": national, "time": iso(latest),
+                                                            "warn": warn, "alarm": alarm}
 
 
 CHMI = "https://opendata.chmi.cz/hydrology/now"
@@ -1207,6 +1208,7 @@ def preparedness(cfg, now) -> list:
         else:
             st = "volitelne" if p.get("volitelne") else "nevyrizeno"
         out.append({"id": p.get("id") or short_hash(p.get("nazev", "")), "nazev": p.get("nazev", ""),
+                    "druh": "platnost" if "plati_do" in p else "ukol",
                     "pozn": p.get("pozn", ""), "odkaz": p.get("odkaz", ""), "plati_do": p.get("plati_do"),
                     "dni": days, "stav": st, "stav_text": PREP_LABEL[st]})
     return out
@@ -1654,6 +1656,7 @@ def build_status(cfg, state, events, region_levels, overall, now):
         "internet": extras.get("ioda") or {},
         "gdelt": (extras.get("gdelt") or {}).get("dotazy", []),
         "quakes": extras.get("emsc") or {},
+        "space": extras.get("noaa") or {},
         "pripravenost": state.get("prep_items", []),
         "seznamy": cfg.get("seznamy") or DEFAULT_CHECKLISTS,
         "history": list(reversed(state.get("history", [])))[:20],
@@ -1836,14 +1839,17 @@ def demo_status(cfg):
         "bfs": {"time": iso(now - timedelta(minutes=40)), "zones": [
             {"name": "Hranice ČR – Sasko a Bavorsko", "n": 64, "median": 0.098, "max": 0.148, "max_name": "Erlbach", "rising": 0, "level": 0},
             {"name": "Šumava – směr Temelín", "n": 21, "median": 0.112, "max": 0.161, "max_name": "Bayerisch Eisenstein", "rising": 0, "level": 0}],
-            "national": {"name": "Celé Německo", "n": 1688, "median": 0.081, "max": 0.192, "max_name": "Feldberg", "level": 0}},
+            "national": {"name": "Celé Německo", "n": 1688, "median": 0.081, "max": 0.192, "max_name": "Feldberg", "level": 0},
+            "warn": (cfg.get("bfs_radiation") or {}).get("warn_usvh", 0.5),
+            "alarm": (cfg.get("bfs_radiation") or {}).get("alarm_usvh", 2.0)},
         "gas": {"time": iso(now), "zeme": [
-            {"code": "DE", "name": "Německo", "region": "DE", "day": "2026-11-10", "full": 58.4, "twh": 146.2, "net_gwh": 2210, "days": 66, "trend": -0.9},
-            {"code": "CZ", "name": "Česko", "region": "CZ", "day": "2026-11-10", "full": 71.2, "twh": 31.0, "net_gwh": 310, "days": 100, "trend": -0.7},
-            {"code": "EU", "name": "EU", "region": "EU", "day": "2026-11-10", "full": 69.9, "twh": 791.5, "net_gwh": 7100, "days": 111, "trend": -0.6}]},
+            {"code": "DE", "name": "Německo", "region": "DE", "day": "2026-11-10", "full": 58.4, "twh": 146.2, "net_gwh": 2210, "days": 66, "trend": -0.9, "level": 0},
+            {"code": "CZ", "name": "Česko", "region": "CZ", "day": "2026-11-10", "full": 71.2, "twh": 31.0, "net_gwh": 310, "days": 100, "trend": -0.7, "level": 0},
+            {"code": "EU", "name": "EU", "region": "EU", "day": "2026-11-10", "full": 69.9, "twh": 791.5, "net_gwh": 7100, "days": 111, "trend": -0.6, "level": 0}]},
         "ioda": {"time": iso(now), "zeme": [{"code": c, "name": n, "down": [], "level": 0}
                                              for c, n in (("CZ", "Česko"), ("DE", "Německo"), ("ES", "Španělsko"))]},
         "gdelt": {"dotazy": [{"id": "nato", "name": "Útok na NATO", "cur": 0.012, "base": 0.006, "ratio": 2.0, "time": iso(now)}]},
+        "noaa": {"now": 0, "max": 4, "day": "2026-11-14"},
         "emsc": {"days": 7, "min_mag": 2.0, "quakes": [
             {"zone": "Chebsko a Vogtland", "mag": 2.4, "time": iso(now - timedelta(days=2)), "place": "Czech Republic", "depth": 9}]},
     }

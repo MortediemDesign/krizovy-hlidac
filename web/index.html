@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Krizový hlídač</title>
-<meta name="theme-color" content="#13191C">
+<meta name="theme-color" content="#0F1416">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Hlídač">
@@ -21,51 +21,93 @@
 @font-face{font-family:"Barlow Condensed";font-weight:700;font-display:swap;src:url(fonts/barlow-condensed-latin-700-normal.woff2) format("woff2");unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:"Barlow Condensed";font-weight:700;font-display:swap;src:url(fonts/barlow-condensed-latin-ext-700-normal.woff2) format("woff2");unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 
+/* Situační tabule: barva jen jako stav (0–3), všechno ostatní inkoust na papíře.
+   Motiv: stoupající čtyřstupňový žebříček – v záhlaví, u oblastí, u událostí i v ikoně Stav. */
 :root{
-  --paper:#EEF1EF; --ink:#172024; --muted:#56646A; --line:#C9D2D0; --raise:#E3E8E6;
+  --paper:#EDF0EC; --ink:#152024; --muted:#56656A; --line:#C8D1CE; --raise:#E1E6E2; --land:#D3DAD5;
   --l0:#2E7D4F; --l1:#E8B51A; --l2:#E2621B; --l3:#B3261E;
   --on0:#FFFFFF; --on1:#1D1A0C; --on2:#1A1007; --on3:#FFFFFF;
   --cond:"Barlow Condensed","Arial Narrow",sans-serif;
   --text:"Barlow",system-ui,sans-serif;
+  --bar:calc(62px + env(safe-area-inset-bottom));
 }
 @media (prefers-color-scheme:dark){
-  :root{--paper:#13191C; --ink:#E6ECEA; --muted:#95A2A6; --line:#2B353A; --raise:#1B2328;}
+  :root{--paper:#0F1416; --ink:#E3E9E7; --muted:#93A1A5; --line:#29343A; --raise:#172025; --land:#1F2A2F;}
 }
 *{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.45 var(--text);}
+html{-webkit-text-size-adjust:100%;scroll-padding-top:16px}
+body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.45 var(--text);font-variant-numeric:tabular-nums;
+  padding-bottom:var(--bar)}
 a{color:inherit;text-underline-offset:3px}
-a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible{outline:3px solid var(--l2);outline-offset:2px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--l2);outline-offset:2px}
 .wrap{max-width:680px;margin:0 auto;padding:0 20px}
+[hidden]{display:none !important}
+.muted{color:var(--muted)}
 
-/* výstražná tabule */
+/* barva stavu i pod stavovým řádkem iPhonu při rolování */
+.sbar{position:fixed;top:0;left:0;right:0;height:env(safe-area-inset-top);background:var(--lv,var(--l0));z-index:20}
+
+/* ── záhlaví: výstražná tabule ── */
 .placard{--bg:var(--l0);--on:var(--on0);background:var(--bg);color:var(--on);
-  padding:calc(env(safe-area-inset-top) + 22px) 0 26px;transition:background-color .6s ease}
+  padding:calc(env(safe-area-inset-top) + 14px) 0 22px;transition:background-color .6s ease}
 .placard[data-level="1"]{--bg:var(--l1);--on:var(--on1)}
 .placard[data-level="2"]{--bg:var(--l2);--on:var(--on2)}
 .placard[data-level="3"]{--bg:var(--l3);--on:var(--on3)}
 .placard[data-level="x"]{--bg:#5B666B;--on:#FFFFFF}
-.placard .scale{display:flex;gap:6px;margin-bottom:18px}
-.placard .scale i{flex:1;height:6px;border-radius:3px;background:currentColor;opacity:.22}
-.placard .scale i.on{opacity:1}
-.level{font:700 clamp(4.4rem,21vw,8.4rem)/.84 var(--cond);letter-spacing:-.01em;margin:0}
-.reason{font-size:1.18rem;line-height:1.35;margin:14px 0 0;max-width:34ch}
-.meta{margin:16px 0 0;font-size:.92rem;opacity:.85}
-.stale{margin:16px 0 0;padding:10px 12px;border-radius:6px;background:rgba(0,0,0,.18);font-weight:600;font-size:.95rem}
+.topline{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:.92rem}
+.topline .brand{font-weight:600}
+.topline .when{opacity:.85;margin-left:auto}
+.icon-btn{display:grid;place-items:center;width:40px;height:40px;margin-right:-8px;border:0;border-radius:50%;
+  background:transparent;color:inherit;cursor:pointer}
+.icon-btn svg{width:22px;height:22px}
+.icon-btn.spin svg{animation:spin .8s linear}
+@keyframes spin{to{transform:rotate(360deg)}}
+.level{font:700 clamp(4.2rem,20vw,8rem)/.84 var(--cond);letter-spacing:-.01em;margin:14px 0 0}
+.ladder{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:18px 0 0;align-items:end}
+.ladder i{display:block;border-radius:3px;background:currentColor;opacity:.22}
+.ladder i:nth-child(1){height:6px} .ladder i:nth-child(2){height:10px} .ladder i:nth-child(3){height:14px} .ladder i:nth-child(4){height:18px}
+.ladder i.on{opacity:1}
+.ladder-labels{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:5px;font-size:.78rem;opacity:.75}
+.ladder-labels span.on{opacity:1;font-weight:600}
+.reason{font-size:1.15rem;line-height:1.35;margin:14px 0 0;max-width:36ch}
+.dest{margin:10px 0 0;font:700 1.35rem/1.2 var(--cond)}
+.stale{margin:14px 0 0;padding:10px 12px;border-radius:6px;background:rgba(0,0,0,.18);font-weight:600;font-size:.95rem}
 .placard[data-level="1"] .stale,.placard[data-level="2"] .stale{background:rgba(255,255,255,.35)}
 .unlock{margin:18px 0 0}
 .unlock label{display:block;font-weight:600;margin-bottom:6px}
 .unlock div{display:flex;gap:8px}
 .unlock input{flex:1;min-width:0;font:400 1rem var(--text);padding:11px 12px;border-radius:6px;border:0;background:#fff;color:#172024}
-.unlock button{font:600 1rem var(--text);padding:11px 16px;border-radius:6px;border:2px solid currentColor;background:transparent;color:inherit;cursor:pointer}
+.unlock button{font:600 1rem var(--text);padding:11px 16px;border-radius:6px;border:2px solid currentColor;background:transparent;cursor:pointer}
+/* na ostatních záložkách jen pruh se stavem */
+body:not([data-tab="stav"]) .placard{padding-bottom:14px}
+body:not([data-tab="stav"]) .placard .level{font-size:2.6rem;margin-top:6px}
+body:not([data-tab="stav"]) .placard :is(.ladder,.ladder-labels,.reason){display:none}
 @media (prefers-reduced-motion:no-preference){
   .placard[data-level="3"] .level{animation:beat 1.6s ease-in-out infinite}
   @keyframes beat{50%{opacity:.55}}
 }
+@media (prefers-reduced-motion:reduce){ .icon-btn.spin svg{animation:none} }
 
-section{padding:26px 0 4px;border-bottom:1px solid var(--line)}
-section:last-of-type{border-bottom:0}
-h2{font:700 1.65rem/1.1 var(--cond);margin:0 0 12px}
+/* ── obecné bloky ── */
+section{padding:24px 0 6px;border-bottom:1px solid var(--line)}
+.tab > section:last-child{border-bottom:0}
+h2{font:700 1.6rem/1.1 var(--cond);margin:0 0 10px}
+.sub{font-weight:600;margin:18px 0 2px}
+.attr{color:var(--muted);font-size:.82rem;margin:8px 0 16px}
+.empty{color:var(--muted);margin:4px 0 16px}
+
+/* žebříček v malém – stupeň oblasti nebo události */
+.mini{display:inline-grid;grid-template-columns:repeat(4,5px);gap:2px;align-items:end;height:16px}
+.mini i{display:block;border-radius:1.5px;background:var(--line)}
+.mini i:nth-child(1){height:5px} .mini i:nth-child(2){height:8px} .mini i:nth-child(3){height:12px} .mini i:nth-child(4){height:16px}
+.mini[data-level="0"] i:nth-child(-n+1){background:var(--l0)}
+.mini[data-level="1"] i:nth-child(-n+2){background:var(--l1)}
+.mini[data-level="2"] i:nth-child(-n+3){background:var(--l2)}
+.mini[data-level="3"] i{background:var(--l3)}
+.lamp{display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--l0);flex:none}
+.lamp[data-level="1"]{background:var(--l1)} .lamp[data-level="2"]{background:var(--l2)} .lamp[data-level="3"]{background:var(--l3)}
+.lamp[data-level="off"]{background:var(--line)}
 
 /* co udělat */
 .todo{list-style:none;margin:0;padding:0}
@@ -76,91 +118,150 @@ h2{font:700 1.65rem/1.1 var(--cond);margin:0 0 12px}
 .todo input:checked{background:var(--ink);border-color:var(--ink)}
 .todo input:checked::after{content:"";width:12px;height:7px;border:solid var(--paper);border-width:0 0 3px 3px;transform:rotate(-45deg) translate(1px,-1px)}
 .todo input:checked + span{color:var(--muted);text-decoration:line-through}
-.todo-reset{margin:6px 0 16px;background:none;border:0;padding:6px 0;color:var(--muted);font:inherit;font-size:.92rem;text-decoration:underline;cursor:pointer}
+.linkish{margin:4px 0 14px;background:none;border:0;padding:6px 0;color:var(--muted);font-size:.92rem;text-decoration:underline;cursor:pointer}
 
-/* oblasti */
-.regions{margin:0;padding:0;list-style:none}
-.regions li{display:grid;grid-template-columns:14px 1fr auto;column-gap:12px;padding:12px 0;border-top:1px solid var(--line)}
-.regions li:first-child{border-top:0}
-.lamp{width:14px;height:14px;border-radius:50%;margin-top:5px;background:var(--l0)}
-.lamp[data-level="1"]{background:var(--l1)} .lamp[data-level="2"]{background:var(--l2)} .lamp[data-level="3"]{background:var(--l3)}
-.r-name{font-weight:600}
-.r-level{font:700 1.15rem/1.3 var(--cond);text-align:right}
-.r-top{grid-column:2 / 4;color:var(--muted);font-size:.95rem;margin-top:2px}
-.dest{margin:12px 0 0;font:700 1.35rem/1.2 var(--cond)}
-.rec-badge{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:4px;background:var(--ink);color:var(--paper);font:600 .78rem/1.5 var(--text);vertical-align:2px}
-.rivers{list-style:none;margin:0;padding:0}
-.rivers li{display:grid;grid-template-columns:14px 1fr auto;column-gap:12px;padding:11px 0;border-top:1px solid var(--line)}
-.rivers li:first-child{border-top:0}
-.rv-val{font:700 1.15rem/1.3 var(--cond);text-align:right}
-.rv-info{grid-column:2 / 4;color:var(--muted);font-size:.92rem;margin-top:2px}
-.attr{color:var(--muted);font-size:.82rem;margin:8px 0 18px}
-.rec-line{margin:0 0 6px}
-.muted{color:var(--muted)}
-.trasa{padding:12px 0}
-.trasa summary{font-size:1.2rem}
-.trasa .route{margin-top:14px}
-.road-state{display:flex;gap:10px;align-items:flex-start;margin:0 0 6px;font-size:.95rem}
-.road-state .lamp{flex:none;margin-top:4px}
-.issues{margin:0 0 10px;padding-left:24px;font-size:.95rem}
-.issues li{margin:3px 0}
-.btns{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 4px}
-.btn{display:inline-block;font:600 .95rem var(--text);padding:10px 14px;border-radius:6px;border:1px solid var(--line);background:var(--raise);color:var(--ink);text-decoration:none;cursor:pointer}
-.sub{font-weight:600;margin:16px 0 4px}
-.fuel{list-style:none;margin:0;padding:0;font-size:.95rem}
-.fuel li{padding:4px 0}
-.refuge-head{margin:14px 0 0;padding-top:12px;border-top:2px solid var(--line);color:var(--muted);font-size:.95rem}
-.rv-info a{white-space:nowrap}
-.prep-warn{margin:0 0 12px;padding:10px 12px;border-radius:6px;background:var(--raise);border-left:4px solid var(--l1);font-size:.95rem}
-.lists details{padding:10px 0}
-.lists summary{font-size:1.15rem}
-.lists .todo{margin-top:8px}
+/* řádky: oblasti, ukazatele, události, položky */
+.rows{list-style:none;margin:0;padding:0}
+.rows > li{display:grid;grid-template-columns:22px 1fr auto;column-gap:12px;padding:12px 0;border-top:1px solid var(--line);align-items:baseline}
+.rows > li:first-child{border-top:0}
+.rows > li > .mini,.rows > li > .lamp{align-self:start;margin-top:4px}
+.rows > li > .task{align-self:start}
+.rows .name{font-weight:600}
+.rows .val{font:700 1.2rem/1.2 var(--cond);text-align:right;white-space:nowrap}
+.rows .info{grid-column:2 / 4;color:var(--muted);font-size:.92rem;margin-top:2px}
+.rows .wide{grid-column:2 / 4}
+.rows .info a{white-space:nowrap}
+.rows > li.go{cursor:pointer}
+.rows > li.go .val::after{content:"›";margin-left:8px;color:var(--muted);font-weight:600}
+.refuge-head{display:flex;align-items:baseline;justify-content:space-between;margin:18px 0 0;padding-top:12px;border-top:2px solid var(--ink);font-weight:600}
+.badge{display:inline-block;margin-left:8px;padding:1px 7px;border-radius:4px;background:var(--ink);color:var(--paper);font:600 .76rem/1.5 var(--text);vertical-align:2px}
+
+/* ukazatel s prahy */
+.gauge{position:relative;height:8px;border-radius:4px;background:var(--raise);margin:9px 0 3px;grid-column:2 / 4}
+.gauge .fill{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--l0);min-width:4px}
+.gauge .fill[data-level="1"]{background:var(--l1)} .gauge .fill[data-level="2"]{background:var(--l2)} .gauge .fill[data-level="3"]{background:var(--l3)}
+.gauge .fill[data-level="ink"]{background:var(--ink)}
+.gauge .tick{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;border-radius:1px;background:var(--muted)}
+.gauge .tick[data-level="1"]{background:var(--l1)} .gauge .tick[data-level="2"]{background:var(--l2)} .gauge .tick[data-level="3"]{background:var(--l3)}
+.gauge .fc{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:2px solid var(--ink);background:var(--paper)}
+.gscale{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;grid-column:2 / 4;margin:9px 0 3px}
+.gscale i{height:8px;border-radius:2px;background:var(--raise)}
+.gscale i.on{background:var(--ink)}
+.gscale i.fc{background:transparent;box-shadow:inset 0 0 0 2px var(--ink)}
 
 /* události */
-.events{list-style:none;margin:0;padding:0}
-.events li{display:grid;grid-template-columns:14px 1fr;column-gap:12px;padding:12px 0;border-top:1px solid var(--line)}
-.events li:first-child{border-top:0}
+.events > li{grid-template-columns:22px 1fr}
 .ev-title{font-weight:600}
-.ev-meta{grid-column:2;color:var(--muted);font-size:.9rem;margin-top:3px}
+.events .info{grid-column:2}
 .ev-detail{grid-column:2;font-size:.95rem;margin-top:4px}
-.empty{color:var(--muted);margin:0 0 18px}
 
-/* trasa */
-.route{list-style:none;margin:4px 0 18px;padding:0;position:relative}
-.route li{position:relative;padding:0 0 14px 28px}
-.route li::before{content:"";position:absolute;left:5px;top:8px;width:12px;height:12px;border-radius:50%;border:3px solid var(--ink);background:var(--paper)}
-.route li::after{content:"";position:absolute;left:10.5px;top:22px;bottom:-6px;width:3px;background:var(--ink)}
-.route li:last-child::after{display:none}
-.route li:last-child::before{background:var(--ink)}
+/* ── mapa ── */
+.map{margin:0 0 6px}
+.map svg{display:block;width:100%;height:auto;border-radius:8px;background:var(--paper);touch-action:manipulation}
+.map .land{fill:var(--land);stroke:var(--paper);stroke-width:1.6;stroke-linejoin:round}
+.map .c0{fill:color-mix(in srgb,var(--l0) 34%,var(--land))}
+.map .c1{fill:color-mix(in srgb,var(--l1) 62%,var(--land))}
+.map .c2{fill:color-mix(in srgb,var(--l2) 62%,var(--land))}
+.map .c3{fill:color-mix(in srgb,var(--l3) 66%,var(--land))}
+.map .route{fill:none;stroke-linecap:round;stroke-linejoin:round}
+.map .route.other{stroke:var(--muted);stroke-width:3.5;stroke-dasharray:2 9}
+.map .route.casing{stroke:var(--paper);stroke-width:13}
+.map .route.sel{stroke:var(--ink);stroke-width:6}
+.map .stop{fill:var(--paper);stroke:var(--ink);stroke-width:4}
+.map .home{fill:var(--ink)}
+.map .dest{fill:var(--ink);stroke:var(--paper);stroke-width:4}
+.map text{font:600 30px var(--text);fill:var(--ink);paint-order:stroke;stroke:var(--paper);stroke-width:8;stroke-linejoin:round}
+.map text.big{font:700 38px var(--cond)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0 16px;color:var(--muted);font-size:.85rem}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend .sw{width:14px;height:10px;border-radius:2px}
+.legend .ln{width:22px;height:0;border-top:4px solid var(--ink);border-radius:2px}
+.legend .ln.d{height:3px;border:0;border-radius:0;background:radial-gradient(circle,var(--muted) 1.4px,transparent 1.6px) 0 50%/7px 3px repeat-x}
+.target{display:flex;gap:12px;align-items:flex-start;margin:6px 0 12px}
+.target .mini{margin-top:6px}
+.target strong{font:700 1.5rem/1.15 var(--cond);display:block}
+.warnbox{margin:0 0 14px;padding:10px 12px;border-radius:6px;background:var(--raise);border-left:4px solid var(--l1);font-size:.95rem}
+
+/* trasy */
+details{border-top:1px solid var(--line)}
+details > summary{display:flex;align-items:center;gap:10px;padding:14px 0;cursor:pointer;list-style:none;font:700 1.25rem/1.2 var(--cond)}
+details > summary::-webkit-details-marker{display:none}
+details > summary::after{content:"";width:9px;height:9px;margin-left:auto;flex:none;border:solid var(--muted);border-width:0 2px 2px 0;transform:rotate(45deg) translate(-2px,-2px);transition:transform .2s}
+details[open] > summary::after{transform:rotate(-135deg) translate(-2px,-2px)}
+details > summary small{font:400 .9rem var(--text);color:var(--muted)}
+.chip{font:600 .78rem/1.5 var(--text);padding:1px 8px;border-radius:999px;background:var(--raise);color:var(--muted);white-space:nowrap}
+.chip.rec{background:var(--ink);color:var(--paper)}
+.chip.bad{background:var(--l1);color:var(--on1)}
+.route-list{list-style:none;margin:0 0 14px;padding:0}
+.route-list li{position:relative;padding:0 0 12px 28px}
+.route-list li::before{content:"";position:absolute;left:5px;top:7px;width:12px;height:12px;border-radius:50%;border:3px solid var(--ink);background:var(--paper)}
+.route-list li::after{content:"";position:absolute;left:10.5px;top:21px;bottom:-5px;width:3px;background:var(--ink)}
+.route-list li:last-child::after{display:none}
+.route-list li:last-child::before{background:var(--ink)}
+.road-state{display:flex;gap:10px;align-items:flex-start;margin:0 0 6px;font-size:.95rem}
+.road-state .lamp{margin-top:5px}
+.issues{margin:0 0 12px;padding-left:22px;font-size:.95rem}
+.issues li{margin:4px 0}
+.btns{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 16px}
+.btn{display:inline-block;font:600 .95rem var(--text);padding:10px 14px;border-radius:6px;border:1px solid var(--line);background:var(--raise);color:var(--ink);text-decoration:none;cursor:pointer}
 .plan dt{color:var(--muted);font-size:.92rem;margin-top:12px}
 .plan dd{margin:2px 0 0}
-.plan{margin:0 0 18px}
+.plan{margin:6px 0 18px}
 
-details{padding:16px 0;border-bottom:1px solid var(--line)}
-details:last-of-type{border-bottom:0}
-summary{font:700 1.35rem/1.2 var(--cond);cursor:pointer;list-style-position:inside}
-summary small{font:400 .95rem var(--text);color:var(--muted);margin-left:6px}
-.src{list-style:none;margin:10px 0 0;padding:0;font-size:.95rem}
-.src li{display:grid;grid-template-columns:14px 1fr;column-gap:10px;padding:7px 0}
-.src .lamp{width:10px;height:10px;margin-top:6px}
-.src .lamp.bad{background:var(--l3)}
-.src .info{grid-column:2;color:var(--muted);font-size:.88rem}
-.hist{list-style:none;margin:10px 0 0;padding:0}
-.hist li{padding:9px 0;border-top:1px solid var(--line);font-size:.95rem}
-.hist li:first-child{border-top:0}
+/* připravenost */
+.prep-sum{display:flex;gap:16px;align-items:center;margin:4px 0 8px}
+.ring{width:84px;height:84px;flex:none}
+.ring circle{fill:none;stroke-width:10}
+.ring .bg{stroke:var(--raise)} .ring .fg{stroke:var(--l0);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%}
+.ring text{font:700 26px var(--cond);fill:var(--ink);text-anchor:middle;dominant-baseline:central}
+.prep-sum p{margin:0}
+.prep-sum strong{font:700 1.35rem/1.2 var(--cond);display:block}
+.task{display:grid;place-items:center;width:20px;height:20px;border-radius:50%;border:2px solid var(--muted);margin-top:2px}
+.task.done{background:var(--l0);border-color:var(--l0)}
+.task.done::after{content:"";width:9px;height:5px;border:solid #fff;border-width:0 0 2.5px 2.5px;transform:rotate(-45deg) translate(1px,-1px)}
+.task.opt{border-style:dashed}
+.lists details > summary{font-size:1.15rem}
+.prog{height:6px;border-radius:3px;background:var(--raise);margin:-6px 0 12px;overflow:hidden}
+.prog i{display:block;height:100%;background:var(--ink);border-radius:3px}
+
+/* historie a zdroje */
+.hist li{display:block}
 .hist time{display:block;color:var(--muted);font-size:.85rem}
-footer{padding:20px 0 calc(env(safe-area-inset-bottom) + 28px);color:var(--muted);font-size:.88rem;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
-footer button{background:none;border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:8px 14px;font:600 .95rem var(--text);cursor:pointer}
+.src .info{grid-column:2 / 4}
+
+footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
+
+/* ── spodní lišta ── */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--paper);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom)}
+.tabbar .in{max-width:680px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr)}
+.tabbar button{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;height:62px;padding:9px 0 0;
+  border:0;background:none;color:var(--muted);font:600 .74rem var(--text);cursor:pointer}
+.tabbar button svg{width:24px;height:24px}
+.tabbar button[aria-current="page"]{color:var(--ink)}
+.tabbar button[aria-current="page"]::before{content:"";position:absolute;top:-1px;left:28%;right:28%;height:3px;border-radius:0 0 3px 3px;background:var(--ink)}
+.tabbar .dot{position:absolute;top:7px;left:calc(50% + 9px);min-width:17px;height:17px;padding:0 4px;border-radius:9px;
+  background:var(--l2);color:#fff;font:700 .7rem/17px var(--text);text-align:center}
+.tabbar .dot[data-level="1"]{background:var(--l1);color:var(--on1)} .tabbar .dot[data-level="3"]{background:var(--l3)}
+@media (min-width:760px){ .level{font-size:7rem} }
 </style>
 </head>
-<body>
+<body data-tab="stav">
+<div class="sbar" id="sbar" aria-hidden="true"></div>
 <header class="placard" id="placard" data-level="0">
   <div class="wrap">
-    <div class="scale" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="topline">
+      <span class="brand">Krizový hlídač</span>
+      <span class="when" id="when"></span>
+      <button class="icon-btn" id="refresh" type="button" aria-label="Obnovit">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg>
+      </button>
+    </div>
     <h1 class="level" id="level">Načítám</h1>
+    <div class="ladder" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div class="ladder-labels" aria-hidden="true"><span>Klid</span><span>Sleduj</span><span>Připrav se</span><span>Odjeď</span></div>
     <p class="reason" id="reason">Zjišťuji aktuální stav.</p>
     <p class="dest" id="dest" hidden></p>
-    <p class="meta" id="meta"></p>
     <p class="stale" id="stale" hidden></p>
     <form class="unlock" id="unlock" hidden>
       <label for="code">Kód pro odemčení</label>
@@ -169,73 +270,105 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
   </div>
 </header>
 
-<main class="wrap">
-  <section aria-labelledby="h-todo">
-    <h2 id="h-todo">Co udělat teď</h2>
-    <ul class="todo" id="todo"></ul>
-    <button class="todo-reset" id="todo-reset" type="button">Odškrtat vše znovu</button>
-  </section>
+<main class="wrap" id="main">
+  <!-- STAV -->
+  <div class="tab" id="tab-stav">
+    <section aria-labelledby="h-todo">
+      <h2 id="h-todo">Co udělat teď</h2>
+      <ul class="todo" id="todo"></ul>
+      <button class="linkish" id="todo-reset" type="button">Odškrtat vše znovu</button>
+    </section>
+    <section aria-labelledby="h-reg">
+      <h2 id="h-reg">Oblasti</h2>
+      <ul class="rows" id="regions"></ul>
+      <p class="refuge-head" id="refuge-head"><span>Útočiště</span><span class="muted" id="refuge-note"></span></p>
+      <ul class="rows" id="refuge"></ul>
+    </section>
+    <section aria-labelledby="h-over">
+      <h2 id="h-over">Přehled</h2>
+      <ul class="rows" id="overview"></ul>
+    </section>
+    <section aria-labelledby="h-ev">
+      <h2 id="h-ev">Co se děje</h2>
+      <ul class="rows events" id="events"></ul>
+    </section>
+  </div>
 
-  <section aria-labelledby="h-reg">
-    <h2 id="h-reg">Oblasti</h2>
-    <ul class="regions" id="regions"></ul>
-    <p class="refuge-head" id="refuge-head">Útočiště</p>
-    <ul class="regions" id="refuge"></ul>
-  </section>
+  <!-- PLÁN -->
+  <div class="tab" id="tab-plan" hidden>
+    <section aria-labelledby="h-plan">
+      <h2 id="h-plan">Plán odjezdu</h2>
+      <figure class="map" id="map" hidden></figure>
+      <div class="legend" id="legend" hidden></div>
+      <div id="plan"></div>
+    </section>
+  </div>
 
-  <section aria-labelledby="h-riv" id="s-riv" hidden>
-    <h2 id="h-riv">Vodočty</h2>
-    <ul class="rivers" id="rivers"></ul>
-    <p class="attr">Data: ČHMÚ, SPA = stupeň povodňové aktivity.</p>
-  </section>
+  <!-- SIGNÁLY -->
+  <div class="tab" id="tab-signaly" hidden>
+    <section id="s-riv" hidden><h2>Vodočty</h2><ul class="rows" id="rivers"></ul><p class="attr">Data: ČHMÚ. Ryska = hranice stupně povodňové aktivity (SPA), kroužek = předpověď na 48 h.</p></section>
+    <section id="s-rad" hidden><h2>Radiace</h2><ul class="rows" id="radiation"></ul>
+      <p class="attr">Data: BfS, německá síť asi 1 700 sond. Běžné pozadí je 0,05–0,2 µSv/h, déšť ho krátce zvedne.
+        Česká síť: <a href="https://sujb.gov.cz/aplikace/monras/" target="_blank" rel="noopener">SÚJB MonRaS</a>,
+        Rakousko: <a href="https://mb.strahlenschutz.gv.at/" target="_blank" rel="noopener">mapa</a>.</p></section>
+    <section id="s-gas" hidden><h2>Plyn v zásobnících</h2><ul class="rows" id="gas"></ul>
+      <p class="attr">Data: GIE AGSI+. Ryska = 10 a 20 %. Dny = jak dlouho by zásobníky stačily bez dovozu při dnešním odběru.</p></section>
+    <section id="s-net" hidden><h2>Internet celých zemí</h2><ul class="rows" id="internet"></ul>
+      <p class="attr">Data: IODA (Georgia Tech). Výpadek celé země bývá první známkou blackoutu nebo kyberútoku.</p></section>
+    <section id="s-space" hidden><h2>Kosmické počasí</h2><ul class="rows" id="space"></ul>
+      <p class="attr">Data: NOAA SWPC. Stupnice G0–G5, od G4 hrozí poruchy rozvodných sítí.</p></section>
+    <section id="s-quake" hidden><h2>Zemětřesení v okolí</h2><ul class="rows" id="quakes"></ul>
+      <p class="attr">Data: EMSC. Roje na Chebsku bývají slabé, cítit jsou zhruba od M3.</p></section>
+    <section id="s-world" hidden><h2>Kolik o tom píše svět</h2><ul class="rows" id="world"></ul>
+      <p class="attr">Data: GDELT, zprávy v 65 jazycích. Poměr = posledních 6 hodin proti běžnému dni za poslední týden.</p></section>
+    <section>
+      <details id="d-hist"><summary>Poslední upozornění <small id="hist-count"></small></summary><ul class="rows hist" id="history"></ul></details>
+      <details id="d-src"><summary>Zdroje <small id="src-count"></small></summary><ul class="rows src" id="sources"></ul></details>
+    </section>
+  </div>
 
-  <section aria-labelledby="h-rad" id="s-rad" hidden>
-    <h2 id="h-rad">Radiace</h2>
-    <ul class="rivers" id="radiation"></ul>
-    <p class="attr">Data: BfS, německá síť asi 1 700 sond. Běžné pozadí je 0,05–0,2 µSv/h, déšť ho krátce zvedne.
-      Česká síť: <a href="https://sujb.gov.cz/aplikace/monras/" target="_blank" rel="noopener">SÚJB MonRaS</a>,
-      Rakousko: <a href="https://mb.strahlenschutz.gv.at/" target="_blank" rel="noopener">mapa</a>.</p>
-  </section>
+  <!-- PŘÍPRAVA -->
+  <div class="tab" id="tab-priprava" hidden>
+    <section aria-labelledby="h-prep">
+      <h2 id="h-prep">Připravenost</h2>
+      <div class="prep-sum" id="prep-sum"></div>
+      <p class="sub" id="h-doc">Doklady a platnost</p>
+      <ul class="rows" id="docs"></ul>
+      <p class="sub" id="h-task">Vyřídit před cestou</p>
+      <ul class="rows" id="tasks"></ul>
+    </section>
+    <section aria-labelledby="h-lists">
+      <h2 id="h-lists">Seznamy na 72 hodin</h2>
+      <div class="lists" id="lists"></div>
+      <p class="attr">Zaškrtnutí si pamatuje jen tento telefon. Podklady: příručka
+        <a href="https://www.72h.gov.cz/" target="_blank" rel="noopener">72 hodin</a> Ministerstva vnitra.</p>
+    </section>
+  </div>
 
-  <section aria-labelledby="h-ev">
-    <h2 id="h-ev">Co se děje</h2>
-    <ul class="events" id="events"></ul>
-  </section>
-
-  <section aria-labelledby="h-plan">
-    <h2 id="h-plan">Plán odjezdu</h2>
-    <div id="plan"></div>
-  </section>
-
-  <section aria-labelledby="h-sig" id="s-sig" hidden>
-    <h2 id="h-sig">Další signály</h2>
-    <div id="signals"></div>
-  </section>
-
-  <section aria-labelledby="h-prep" id="s-prep" hidden>
-    <h2 id="h-prep">Připravenost</h2>
-    <p class="sub" id="prep-head">Doklady a auto</p>
-    <ul class="rivers" id="prep"></ul>
-    <p class="sub">Seznamy na 72 hodin</p>
-    <div class="lists" id="lists"></div>
-    <p class="attr">Zaškrtnutí si pamatuje jen tento telefon. Podklady: příručka
-      <a href="https://www.72h.gov.cz/" target="_blank" rel="noopener">72 hodin</a> Ministerstva vnitra.</p>
-  </section>
-
-  <section>
-    <details id="d-hist"><summary>Poslední upozornění <small id="hist-count"></small></summary><ul class="hist" id="history"></ul></details>
-    <details id="d-src"><summary>Zdroje <small id="src-count"></small></summary><ul class="src" id="sources"></ul></details>
-  </section>
+  <footer id="foot">Krizový hlídač</footer>
 </main>
 
-<footer class="wrap">
-  <span id="foot">Krizový hlídač</span>
-  <button type="button" id="refresh">Obnovit</button>
-</footer>
+<nav class="tabbar" id="tabbar" aria-label="Záložky">
+  <div class="in">
+    <button type="button" data-tab="stav" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="15" width="3.6" height="5" rx="1"/><rect x="8.1" y="11.5" width="3.6" height="8.5" rx="1"/><rect x="13.2" y="8" width="3.6" height="12" rx="1"/><rect x="18.3" y="4" width="3.6" height="16" rx="1"/></svg>
+      Stav</button>
+    <button type="button" data-tab="plan">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="18" r="2.4"/><path d="M8.4 18H15a3.2 3.2 0 0 0 0-6.4H9a3.2 3.2 0 0 1 0-6.4h6"/><path d="M18 2.8a3 3 0 0 1 3 3c0 2.2-3 4.7-3 4.7s-3-2.5-3-4.7a3 3 0 0 1 3-3z"/></svg>
+      Plán</button>
+    <button type="button" data-tab="signaly">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 12h4l2.6-7 5 14 2.6-7h4.8"/></svg>
+      Signály<span class="dot" id="dot-sig" hidden></span></button>
+    <button type="button" data-tab="priprava">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4" width="15" height="17" rx="2"/><path d="M9 4V2.8h6V4"/><path d="M8.5 12.5l2.4 2.4 4.6-4.8"/></svg>
+      Příprava<span class="dot" id="dot-prep" hidden></span></button>
+  </div>
+</nav>
 
 <script>
 (() => {
   const LEVEL_TEXT = ["Klid", "Sleduj", "Připrav se", "Odjeď"];
+  const TABS = ["stav", "plan", "signaly", "priprava"];
   const $ = id => document.getElementById(id);
   const qs = new URLSearchParams(location.search);
   const store = {
@@ -248,13 +381,22 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
   let mode = store.get("mode");   // "plain" = vlastní server, "enc" = šifrovaný stav na GitHub Pages
   let last = null;
   let rendered = false;           // rozbalené části se při obnově každou minutu nezavírají
+  let mapData = null, mapTried = false;
+  let selRoute = null;            // trasa zvýrazněná na mapě
 
   function el(tag, attrs, ...kids){
     const n = document.createElement(tag);
     for (const [k,v] of Object.entries(attrs||{})) {
-      if (v == null) continue;
+      if (v == null || v === false) continue;
       if (k === "text") n.textContent = v; else n.setAttribute(k, v);
     }
+    for (const c of kids) if (c != null && c !== false) n.append(c);
+    return n;
+  }
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function sv(tag, attrs, ...kids){
+    const n = document.createElementNS(SVGNS, tag);
+    for (const [k,v] of Object.entries(attrs||{})) if (v != null) n.setAttribute(k, v);
     for (const c of kids) if (c != null) n.append(c);
     return n;
   }
@@ -265,8 +407,9 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     return d.toLocaleString("cs-CZ", today ? {hour:"2-digit",minute:"2-digit"} : {day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"});
   };
   const fmtDate = s => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ""); return m ? `${+m[3]}. ${+m[2]}. ${m[1]}` : (s || ""); };
+  const dec = (x, n=1) => Number(x).toFixed(n).replace(".", ",");
   const fmtNum = x => (x > 0 ? "+" : "") + String(x).replace("-", "−").replace(".", ",");
-  const lamp = lv => el("span", {class:"lamp", "data-level": lv || 0, "aria-hidden":"true"});
+  const uSv = x => `${dec(x, 2)} µSv/h`;
   const ago = iso => {
     const m = Math.round((Date.now() - new Date(iso)) / 60000);
     if (!isFinite(m)) return "";
@@ -275,7 +418,36 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     const h = Math.round(m/60);
     return h < 48 ? `před ${h} h` : `před ${Math.round(h/24)} dny`;
   };
+  const mini = lv => el("span", {class:"mini", "data-level": lv || 0, "aria-hidden":"true"}, el("i"), el("i"), el("i"), el("i"));
+  const lamp = lv => el("span", {class:"lamp", "data-level": lv == null ? "off" : lv, "aria-hidden":"true"});
+  const row = (lead, name, val, info, extra) => el("li", extra || null, lead,
+    typeof name === "string" ? el("span", {class:"name", text:name}) : name,
+    el("span", {class:"val", text: val || ""}), info ? el("span", {class:"info", text: info}) : null);
 
+  // ukazatel: hodnota na stupnici s ryskami prahů (a volitelně předpovědí)
+  function gauge(value, max, marks, opts = {}){
+    const pos = v => `${Math.max(0, Math.min(100, v / max * 100))}%`;
+    const g = el("div", {class:"gauge", role:"img", "aria-label": opts.label || ""});
+    g.append(el("span", {class:"fill", "data-level": opts.level == null ? "ink" : opts.level, style:`width:${pos(value)}`}));
+    (marks || []).forEach(m => { if (m && m.at != null && m.at < max) g.append(el("span", {class:"tick", "data-level": m.level, style:`left:${pos(m.at)}`})); });
+    if (opts.forecast != null) g.append(el("span", {class:"fc", style:`left:${pos(opts.forecast)}`}));
+    return g;
+  }
+
+  // ── záložky ──
+  function setTab(t, scrollTo){
+    if (!TABS.includes(t)) t = "stav";
+    document.body.dataset.tab = t;
+    TABS.forEach(x => $(`tab-${x}`).hidden = x !== t);
+    document.querySelectorAll(".tabbar button").forEach(b => b.setAttribute("aria-current", b.dataset.tab === t ? "page" : "false"));
+    history.replaceState(null, "", `${location.pathname}${location.search}${t === "stav" ? "" : "#" + t}`);
+    if (scrollTo && $(scrollTo)) $(scrollTo).scrollIntoView({block:"start"});
+    else window.scrollTo(0, 0);
+    if (t === "plan") drawMap();
+  }
+  document.querySelectorAll(".tabbar button").forEach(b => b.addEventListener("click", () => setTab(b.dataset.tab)));
+
+  // ── GPX a Google Mapy ──
   const xmlEsc = x => String(x).replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c]));
   function gpxText(t, pts){
     const pt = (tag, b) => `<${tag} lat="${b.lat}" lon="${b.lon}"><name>${xmlEsc(b.nazev)}</name></${tag}>`;
@@ -304,18 +476,84 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     return u.toString();
   }
 
+  // ── situační mapa: oblasti podle stupně, trasy, domov a útočiště ──
+  async function loadMap(){
+    if (mapData || mapTried) return mapData;
+    mapTried = true;
+    try { const r = await fetch("mapa.json"); if (r.ok) mapData = await r.json(); } catch(e) {}
+    return mapData;
+  }
+  function project(m, lat, lon){
+    const r = Math.PI / 180;
+    return [m.k * lon * r + m.tx, m.ty - m.k * Math.log(Math.tan(Math.PI / 4 + lat * r / 2))];
+  }
+  async function drawMap(){
+    const s = last;
+    if (!s) return;
+    const m = await loadMap();
+    const fig = $("map");
+    if (!m) { fig.hidden = true; $("legend").hidden = true; return; }
+    const lv = {};
+    s.regions.forEach(r => lv[r.code] = r.level);
+    const svg = sv("svg", {viewBox:`0 0 ${m.w} ${m.h}`, role:"img", "aria-label":"Mapa tras a útočišť"});
+    svg.append(sv("path", {class:"land", d:m.ostatni}));
+    Object.entries(m.land).forEach(([code, d]) => {
+      svg.append(sv("path", {class: `land${code in lv ? " c" + lv[code] : ""}`, d}));
+    });
+    const trasy = ((s.plan || {}).trasy || []).filter(t => (t.body || []).length >= 2);
+    const recId = s.recommended && s.recommended.trasa;
+    const sel = trasy.find(t => t.id === selRoute) || trasy.find(t => t.id === recId) || trasy[0];
+    const line = t => t.body.map(b => project(m, b.lat, b.lon).map(v => v.toFixed(1)).join(",")).join(" ");
+    trasy.filter(t => t !== sel).forEach(t => svg.append(sv("polyline", {class:"route other", points: line(t)})));
+    if (sel) {
+      svg.append(sv("polyline", {class:"route casing", points: line(sel)}));
+      svg.append(sv("polyline", {class:"route sel", points: line(sel)}));
+      sel.body.slice(1, -1).forEach(b => { const [x, y] = project(m, b.lat, b.lon); svg.append(sv("circle", {class:"stop", cx:x, cy:y, r:7})); });
+    }
+    // cíle tras a domov
+    const refName = {};
+    s.regions.filter(r => r.refuge).forEach(r => refName[r.code] = r.name);
+    const done = new Set();
+    trasy.forEach(t => {
+      const b = t.body[t.body.length - 1];
+      const key = `${b.lat},${b.lon}`;
+      if (done.has(key)) return; done.add(key);
+      const [x, y] = project(m, b.lat, b.lon);
+      svg.append(sv("circle", {class:"dest", cx:x, cy:y, r: t === sel ? 13 : 10}));
+      svg.append(sv("text", {x: x + 18, y: y + 10, class: t === sel ? "big" : null}, b.nazev));
+    });
+    if (trasy[0]) {
+      const h = trasy[0].body[0];
+      const [x, y] = project(m, h.lat, h.lon);
+      svg.append(sv("rect", {class:"home", x: x - 12, y: y - 12, width: 24, height: 24, rx: 3}));
+      svg.append(sv("text", {x: x + 20, y: y - 14, class:"big"}, "Domov"));
+    }
+    fig.replaceChildren(svg);
+    fig.hidden = false;
+    const lg = $("legend");
+    lg.replaceChildren(
+      ...[0,1,2,3].map(n => el("span", null, el("i", {class:"sw", style:`background:var(--l${n})`}), LEVEL_TEXT[n])),
+      el("span", null, el("i", {class:"ln"}), sel ? sel.nazev : "trasa"),
+      trasy.length > 1 ? el("span", null, el("i", {class:"ln d"}), "další trasy") : null);
+    lg.hidden = false;
+  }
+
   function render(s){
     last = s;
     const wasOpen = new Set([...document.querySelectorAll("details[data-k]")].filter(d => d.open).map(d => d.dataset.k));
     const openState = (d, key, def) => { d.dataset.k = key; d.open = rendered ? wasOpen.has(key) : def; return d; };
     const o = s.overall.level;
-    $("placard").dataset.level = o;
-    document.querySelectorAll(".scale i").forEach((i,n) => i.classList.toggle("on", n <= o));
-    $("level").textContent = LEVEL_TEXT[o];
-    document.title = `${LEVEL_TEXT[o]} – Krizový hlídač`;
     const refugeCodes = new Set(s.regions.filter(r => r.refuge).map(r => r.code));
     const home = s.events.filter(e => !refugeCodes.has(e.region));
     const rec = s.recommended;
+
+    // ── záhlaví ──
+    $("placard").dataset.level = o;
+    document.documentElement.style.setProperty("--lv", `var(--l${o})`);
+    document.querySelectorAll(".ladder i").forEach((i,n) => i.classList.toggle("on", n <= o));
+    document.querySelectorAll(".ladder-labels span").forEach((i,n) => i.classList.toggle("on", n === o));
+    $("level").textContent = LEVEL_TEXT[o];
+    document.title = `${LEVEL_TEXT[o]} – Krizový hlídač`;
     $("dest").hidden = !(o >= 2 && rec);
     if (rec) $("dest").textContent = rec.calm ? `Doporučený cíl: ${rec.name}` : `Žádné útočiště není klidné, nejlepší je ${rec.name}`;
     $("reason").textContent = o === 0
@@ -324,116 +562,132 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     if (s.blind && o === 0) {
       $("dest").hidden = true;
       $("placard").dataset.level = "x";
+      document.documentElement.style.setProperty("--lv", "#5B666B");
       $("level").textContent = "Bez dat";
-      $("reason").textContent = "Většina zdrojů teď neodpovídá, takže klid nejde potvrdit. Seznam je dole v části Zdroje.";
+      $("reason").textContent = "Většina zdrojů teď neodpovídá, takže klid nejde potvrdit. Seznam je v záložce Signály dole.";
     }
-    $("meta").textContent = `Aktualizováno ${fmtTime(s.generated)}, kontrola každých ${s.interval_minutes} min.`;
-
+    $("when").textContent = `${fmtTime(s.generated)}, každých ${s.interval_minutes} min`;
     const ageMin = (Date.now() - new Date(s.generated)) / 60000;
     const limit = s.stale_after_minutes || Math.max(30, 3 * (s.interval_minutes || 10));
     $("stale").hidden = ageMin < limit;
     $("stale").textContent = `Hlídač se naposledy ozval před ${Math.round(ageMin)} min. Řiď se rádiem, sirénami a výstrahami v telefonu.`;
 
-    // co udělat
+    // ── STAV: co udělat ──
     const acts = (s.actions && s.actions[String(o)]) || [];
-    const todo = $("todo"); todo.replaceChildren();
-    acts.forEach(a => {
+    $("todo").replaceChildren(...acts.map(a => {
       const key = `todo:${o}:${a}`;
       const cb = el("input", {type:"checkbox"});
       cb.checked = store.get(key) === "1";
       cb.addEventListener("change", () => cb.checked ? store.set(key,"1") : store.del(key));
-      todo.append(el("li", null, el("label", null, cb, el("span", {text:a}))));
-    });
+      return el("li", null, el("label", null, cb, el("span", {text:a})));
+    }));
     $("todo-reset").onclick = () => { acts.forEach(a => store.del(`todo:${o}:${a}`)); render(last); };
 
-    // oblasti
-    const row = r => {
+    // ── STAV: oblasti ──
+    const regRow = r => {
       const top = r.events[0];
       const quiet = r.note ? `Bez varování. ${r.note}` : "Bez varování";
-      return el("li", null,
-        el("span", {class:"lamp", "data-level":r.level, "aria-hidden":"true"}),
-        el("span", {class:"r-name"}, r.name, r.refuge && r.recommended ? el("span", {class:"rec-badge", text:"doporučeno"}) : null),
-        el("span", {class:"r-level", text:LEVEL_TEXT[r.level]}),
-        el("span", {class:"r-top", text: top ? top.title : quiet}));
+      return row(mini(r.level), el("span", {class:"name"}, r.name, r.refuge && r.recommended ? el("span", {class:"badge", text:"doporučeno"}) : null),
+        LEVEL_TEXT[r.level], top ? top.title : quiet);
     };
-    $("regions").replaceChildren(...s.regions.filter(r => !r.refuge).map(row));
+    $("regions").replaceChildren(...s.regions.filter(r => !r.refuge).map(regRow));
     const refuge = s.regions.filter(r => r.refuge);
     $("refuge-head").hidden = !refuge.length;
-    $("refuge").replaceChildren(...refuge.map(row));
+    $("refuge-note").textContent = refuge.length ? "nepočítá se do stavu doma" : "";
+    $("refuge").replaceChildren(...refuge.map(regRow));
 
-    // události
-    const evs = $("events"); evs.replaceChildren();
-    if (!s.events.length) evs.append(el("li", null, el("span"), el("p", {class:"empty", text:"Žádná aktivní varování. Hlídač dál sleduje všechny zdroje."})));
-    s.events.slice(0, 30).forEach(e => {
+    // ── STAV: přehled ukazatelů (klepnutím do Signálů) ──
+    const ov = [];
+    const go = target => ({class:"go", tabindex:"0", role:"button", "data-go": target});
+    const riv = s.rivers || [];
+    if (riv.length) {
+      const ratio = r => { const l = (r.limits || []).find(x => x != null); return l ? r.value / l : 0; };
+      const worst = riv.slice().sort((a, b) => (b.stage - a.stage) || (ratio(b) - ratio(a)))[0];
+      const l1 = (worst.limits || []).find(x => x != null);
+      const li = row(mini(Math.min(3, worst.stage)), "Vodočty", `${worst.value} ${worst.unit}`,
+        worst.stage ? `${worst.name}: ${worst.stage}. SPA` : `${worst.name}${l1 ? `, do 1. SPA chybí ${Math.max(0, Math.round(l1 - worst.value))} ${worst.unit}` : ""}`, go("s-riv"));
+      ov.push(li);
+    }
+    const rad = s.radiation || {};
+    const zones = (rad.zones || []).filter(z => z.n);
+    if (zones.length) {
+      const top = zones.slice().sort((a, b) => b.level - a.level || b.max - a.max)[0];
+      ov.push(row(mini(top.level), "Radiace", uSv(top.max), `${top.name}, nejvyšší ${top.max_name}`, go("s-rad")));
+    }
+    const gas = (s.gas && s.gas.zeme) || [];
+    if (gas.length) {
+      const top = gas.slice().sort((a, b) => b.level - a.level || a.full - b.full)[0];
+      ov.push(row(mini(top.level), "Plyn v zásobnících", `${Math.round(top.full)} %`,
+        gas.map(g => `${g.code} ${Math.round(g.full)} %`).join(", "), go("s-gas")));
+    }
+    const net = (s.internet && s.internet.zeme) || [];
+    if (net.length) {
+      const bad = net.filter(n => n.level);
+      ov.push(row(mini(Math.max(0, ...net.map(n => n.level))), "Internet", bad.length ? "výpadek" : "v pořádku",
+        bad.length ? bad.map(n => n.name).join(", ") : `${net.length} zemí bez výpadku`, go("s-net")));
+    }
+    const sp = s.space || {};
+    if (sp.now != null) {
+      const lvS = g => g >= 5 ? 2 : g >= 4 ? 1 : 0;
+      ov.push(row(mini(Math.max(lvS(sp.now), lvS(sp.max))), "Kosmické počasí", `G${sp.now}`,
+        sp.max ? `předpověď až G${sp.max}${sp.day ? ` (${fmtDate(sp.day)})` : ""}` : "bez geomagnetické bouře", go("s-space")));
+    }
+    const qk = s.quakes || {};
+    if (Array.isArray(qk.quakes)) {
+      const q = qk.quakes[0];
+      ov.push(row(mini(q && q.mag >= 3.5 ? 1 : 0), "Zemětřesení", q ? `M${dec(q.mag)}` : "klid",
+        q ? `naposledy ${fmtTime(q.time)}, ${q.zone}` : `za ${qk.days || 7} dní nic od M${dec(qk.min_mag || 2)}`, go("s-quake")));
+    }
+    const okSrc = s.sources.filter(x => x.ok).length;
+    ov.push(row(lamp(okSrc === s.sources.length ? 0 : okSrc * 2 < s.sources.length ? 3 : 1), "Zdroje", `${okSrc}/${s.sources.length}`,
+      okSrc === s.sources.length ? "všechny odpovídají" : `nefunguje: ${s.sources.filter(x => !x.ok).map(x => x.label).join(", ")}`, go("d-src")));
+    $("overview").replaceChildren(...ov);
+    $("overview").querySelectorAll("[data-go]").forEach(li => {
+      const open = () => { const t = li.dataset.go; if (t === "d-src") $("d-src").open = true; setTab("signaly", t); };
+      li.addEventListener("click", open);
+      li.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    });
+
+    // ── STAV: události ──
+    const evs = s.events.slice(0, 30).map(e => {
       const url = safeUrl(e.url);
       const title = url ? el("a", {href:url, target:"_blank", rel:"noopener", class:"ev-title", text:e.title})
                         : el("span", {class:"ev-title", text:e.title});
       const region = (s.regions.find(r => r.code === e.region) || {}).name || e.region;
-      evs.append(el("li", null,
-        el("span", {class:"lamp", "data-level":e.level, "aria-hidden":"true"}),
-        title,
-        el("span", {class:"ev-meta", text:`${LEVEL_TEXT[e.level]}, ${region}, ${e.source}, ${ago(e.time)}`}),
-        e.detail ? el("span", {class:"ev-detail", text:e.detail}) : null));
+      return el("li", null, mini(e.level), title,
+        el("span", {class:"info", text:`${LEVEL_TEXT[e.level]}, ${region}, ${e.source}, ${ago(e.time)}`}),
+        e.detail ? el("span", {class:"ev-detail", text:e.detail}) : null);
     });
+    $("events").replaceChildren(...(evs.length ? evs : [el("li", null, mini(0), el("span", {class:"muted", text:"Žádná aktivní varování. Hlídač dál sleduje všechny zdroje."}))]));
 
-    // vodočty
-    const riv = s.rivers || [];
-    $("s-riv").hidden = !riv.length;
-    const SPA = ["bez povodňové aktivity", "1. SPA – bdělost", "2. SPA – pohotovost", "3. SPA – ohrožení", "extrémní povodeň"];
-    $("rivers").replaceChildren(...riv.map(r => {
-      const info = [SPA[r.stage] || ""];
-      const next = (r.limits || []).find(x => x != null && x > r.value);
-      if (!r.stage && next != null) info[0] += ` (1. SPA od ${next} ${r.unit})`;
-      if (r.rise != null && r.rise >= 5) info.push(`stoupá o ${r.rise} cm za 3 h`);
-      if (r.forecast_max != null) info.push(`předpověď do 48 h: max ${r.forecast_max} ${r.unit}`);
-      return el("li", null,
-        el("span", {class:"lamp", "data-level": Math.min(3, r.stage || 0), "aria-hidden":"true"}),
-        el("span", {class:"r-name", text:r.name}),
-        el("span", {class:"rv-val", text:`${r.value} ${r.unit}`}),
-        el("span", {class:"rv-info", text: info.join(", ") + (r.time ? `, ${fmtTime(r.time)}` : "")}));
-    }));
-
-    // radiace
-    const rad = s.radiation || {};
-    const radRows = (rad.zones || []).concat(rad.national && rad.national.n ? [rad.national] : []).filter(z => z.n);
-    $("s-rad").hidden = !radRows.length;
-    const uSv = x => `${Number(x).toFixed(2).replace(".", ",")} µSv/h`;
-    $("radiation").replaceChildren(...radRows.map(z => {
-      const info = [`medián ${uSv(z.median)}`, `${z.n} sond`, `nejvyšší ${z.max_name}`];
-      if (z.rising) info.push(`${z.rising} nad svým normálem`);
-      return el("li", null,
-        el("span", {class:"lamp", "data-level": z.level || 0, "aria-hidden":"true"}),
-        el("span", {class:"r-name", text: z.name}),
-        el("span", {class:"rv-val", text: `max ${uSv(z.max)}`}),
-        el("span", {class:"rv-info", text: info.join(", ") + (rad.time ? `, ${fmtTime(rad.time)}` : "")}));
-    }));
-
-    // plán
+    // ── PLÁN ──
     const p = s.plan || {};
     const plan = $("plan"); plan.replaceChildren();
     if (rec) {
-      plan.append(el("p", {class:"rec-line"}, rec.calm ? "Doporučený cíl teď: " : "Žádné útočiště teď není klidné. Nejlepší je: ",
-        el("strong", {text: rec.name}), rec.pozn ? el("span", {class:"muted", text: ". " + rec.pozn}) : null));
+      plan.append(el("div", {class:"target"}, mini(rec.level),
+        el("div", null, el("span", {class:"muted", text: rec.calm ? "Doporučený cíl teď" : "Žádné útočiště není klidné, nejlepší je"}),
+          el("strong", {text: rec.name}), rec.pozn ? el("span", {class:"muted", text: rec.pozn}) : null)));
     } else if (p.cil) {
       plan.append(el("p", null, "Cíl: ", el("strong", {text:p.cil})));
     }
     const prepItems = s.pripravenost || [];
     const prepBad = prepItems.filter(i => i.stav === "propadle" || i.stav === "nevyrizeno" || (i.stav === "brzy" && i.dni <= 30));
     if (prepBad.length) {
-      plan.append(el("p", {class:"prep-warn"}, `Než vyrazíš, vyřiď: ${prepBad.slice(0, 4).map(i => i.nazev).join("; ")}`,
-        prepBad.length > 4 ? ` a další (${prepBad.length - 4})` : "", ". ", el("a", {href:"#s-prep", text:"Připravenost"})));
+      const a = el("a", {href:"#priprava", text:"Příprava"});
+      a.addEventListener("click", e => { e.preventDefault(); setTab("priprava"); });
+      plan.append(el("p", {class:"warnbox"}, `Než vyrazíš, vyřiď: ${prepBad.slice(0, 3).map(i => i.nazev).join("; ")}`,
+        prepBad.length > 3 ? ` a další (${prepBad.length - 3})` : "", ". ", a));
     }
     const trasy = (p.trasy || []).slice();
     if (rec && rec.trasa) trasy.sort((a, b) => (b.id === rec.trasa) - (a.id === rec.trasa));
     trasy.forEach((t, i) => {
       const pts = (t.body || []).filter(b => isFinite(b.lat) && isFinite(b.lon));
+      const issues = t.issues || [];
       const body = el("div");
-      body.append(el("ol", {class:"route", "aria-label": t.nazev}, ...(t.body || []).map(b => el("li", {text:b.nazev}))));
+      body.append(el("ol", {class:"route-list", "aria-label": t.nazev}, ...(t.body || []).map(b => el("li", {text:b.nazev}))));
       if ((t.dalnice || []).length) {
-        const issues = t.issues || [];
         const when = s.route_time ? ` (${fmtTime(s.route_time)})` : "";
-        body.append(el("p", {class:"road-state"},
-          el("span", {class:"lamp", "data-level": issues.length ? 1 : 0, "aria-hidden":"true"}),
+        body.append(el("p", {class:"road-state"}, lamp(issues.length ? 1 : 0),
           el("span", {text: issues.length ? `Komplikace na německých dálnicích${when}:` : `Dálnice ${t.dalnice.join(", ")} bez uzavírek a velkých kolon${when}.`})));
         if (issues.length) body.append(el("ul", {class:"issues"}, ...issues.map(x => el("li", {text:x}))));
       }
@@ -447,18 +701,19 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
         body.append(el("div", {class:"btns"}, gpxBtn,
           el("a", {class:"btn", href: gmaps(pts), target:"_blank", rel:"noopener", text:"Otevřít v Google Mapách"})));
       }
-      const label = t.nazev + (rec && t.id === rec.trasa ? " (doporučená)" : "");
-      plan.append(openState(el("details", {class:"trasa"}, el("summary", {text: label}), body), `t:${t.id || i}`, i === 0));
+      const isRec = rec && t.id === rec.trasa;
+      const sum = el("summary", null, t.nazev,
+        isRec ? el("span", {class:"chip rec", text:"doporučená"}) : null,
+        issues.length ? el("span", {class:"chip bad", text:"komplikace"}) : null);
+      const d = openState(el("details", null, sum, body), `t:${t.id || i}`, i === 0);
+      d.addEventListener("toggle", () => { if (d.open && t.id && selRoute !== t.id) { selRoute = t.id; drawMap(); } });
+      plan.append(d);
     });
-    if (!trasy.length && p.trasa) {
-      plan.append(el("ol", {class:"route", "aria-label":"Hlavní trasa"},
-        ...p.trasa.split("→").map(x => x.trim()).filter(Boolean).map(x => el("li", {text:x}))));
-    }
     const fuel = Object.entries(s.fuel || {});
     if (fuel.length) {
       plan.append(el("p", {class:"sub", text:"Palivo v Německu"}),
-        el("ul", {class:"fuel"}, ...fuel.map(([n, f]) => el("li", {text:
-          `${n}: otevřeno ${f.open} z ${f.total} pump` + (f.diesel ? `, nafta ${f.diesel.toFixed(2).replace(".", ",")} €` : "")}))),
+        el("ul", {class:"rows"}, ...fuel.map(([n, f]) => row(lamp(f.total && f.open / f.total < .4 ? 1 : 0), n,
+          f.diesel ? `${dec(f.diesel, 2)} €` : "", `otevřeno ${f.open} z ${f.total} pump`))),
         el("p", {class:"attr", text:"Ceny paliva: Tankerkönig, CC BY 4.0."}));
     }
     const dl = el("dl", {class:"plan"});
@@ -466,64 +721,120 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
       if (v) dl.append(el("dt", {text:k}), el("dd", {text:v}));
     });
     plan.append(dl);
+    if (document.body.dataset.tab === "plan") drawMap();
 
-    // další signály – plyn, internet, objem světových zpráv, zemětřesení
-    const sig = $("signals"); sig.replaceChildren();
-    const sigRow = (lv, name, val, info) => el("li", null, lamp(lv), el("span", {class:"r-name", text:name}),
-      el("span", {class:"rv-val", text:val}), el("span", {class:"rv-info", text:info}));
-    const gas = (s.gas && s.gas.zeme) || [];
-    if (gas.length) {
-      sig.append(el("p", {class:"sub", text:"Plyn v zásobnících"}), el("ul", {class:"rivers"}, ...gas.map(g => sigRow(g.level, g.name,
-        `${Math.round(g.full)} %`, [g.days ? `při dnešním odběru vystačí na ${g.days} dní` : (g.net_gwh < 0 ? "zásobníky se plní" : ""),
-          g.trend != null ? `${fmtNum(g.trend)} % za den` : "", g.day ? `stav k ${fmtDate(g.day)}` : ""].filter(Boolean).join(", ")))),
-        el("p", {class:"attr", text:"Data: GIE AGSI+. Dny = jak dlouho by zásobníky stačily bez dovozu při dnešním odběru."}));
-    }
-    const net = (s.internet && s.internet.zeme) || [];
-    if (net.length) {
-      sig.append(el("p", {class:"sub", text:"Internet celých zemí"}), el("ul", {class:"rivers"}, ...net.map(n => sigRow(n.level, n.name,
-        n.level ? "výpadek" : "v pořádku", n.down.length ? `kritický pokles: ${n.down.join(", ")}` : "bez kritického poklesu"))),
-        el("p", {class:"attr", text:"Data: IODA (Georgia Tech). Výpadek celé země bývá první známkou blackoutu nebo kyberútoku."}));
-    }
-    const gd = s.gdelt || [];
-    if (gd.length) {
-      sig.append(el("p", {class:"sub", text:"Kolik o tom píše svět"}), el("ul", {class:"rivers"}, ...gd.map(g => sigRow(g.ratio >= 4 ? 1 : 0, g.name,
-        `${String(g.ratio).replace(".", ",")}×`, g.ratio >= 2 ? "víc zpráv než obvykle" : "běžná úroveň"))),
-        el("p", {class:"attr", text:"Data: GDELT, zprávy v 65 jazycích. Poměr = posledních 6 hodin proti běžnému dni za poslední týden."}));
-    }
-    const qk = s.quakes || {};
-    if (Array.isArray(qk.quakes)) {
-      sig.append(el("p", {class:"sub", text:"Zemětřesení v okolí"}));
-      if (qk.quakes.length) {
-        sig.append(el("ul", {class:"rivers"}, ...qk.quakes.slice(0, 6).map(q => sigRow(q.mag >= 5 ? 2 : q.mag >= 3.5 ? 1 : 0,
-          `M${String(q.mag).replace(".", ",")} ${q.place || q.zone}`, fmtTime(q.time),
-          `${q.zone}` + (q.depth != null ? `, hloubka ${q.depth} km` : "")))));
-      } else {
-        sig.append(el("p", {class:"empty", text:`Za ${qk.days || 7} dní žádný otřes od M${String(qk.min_mag || 2).replace(".", ",")}.`}));
-      }
-      sig.append(el("p", {class:"attr", text:"Data: EMSC. Roje na Chebsku bývají slabé, cítit jsou zhruba od M3."}));
-    }
-    $("s-sig").hidden = !sig.childNodes.length;
-
-    // připravenost – doklady, auto, seznamy
-    const lists = s.seznamy || [];
-    $("s-prep").hidden = !prepItems.length && !lists.length;
-    $("prep-head").hidden = !prepItems.length;
-    const PREP_LVL = {propadle: 3, chybi_datum: 1, nevyrizeno: 1, volitelne: 0, ok: 0};
-    $("prep").replaceChildren(...prepItems.map(i => {
-      const lv = i.stav === "brzy" ? (i.dni <= 30 ? 2 : 1) : (PREP_LVL[i.stav] || 0);
-      const info = [];
-      if (i.dni != null) info.push(i.dni < 0 ? `propadlé ${-i.dni} dní` : `platí ještě ${i.dni} dní`);
-      if (i.pozn) info.push(i.pozn);
-      const infoEl = el("span", {class:"rv-info", text: info.join(". ")});
-      const u = safeUrl(i.odkaz);
-      if (u) infoEl.append(" ", el("a", {href:u, target:"_blank", rel:"noopener", text:"Otevřít web"}));
-      return el("li", null, lamp(lv), el("span", {class:"r-name", text:i.nazev}),
-        el("span", {class:"rv-val", text: i.plati_do ? fmtDate(i.plati_do) : i.stav_text}), infoEl);
+    // ── SIGNÁLY ──
+    const SPA = ["bez povodňové aktivity", "1. SPA – bdělost", "2. SPA – pohotovost", "3. SPA – ohrožení", "extrémní povodeň"];
+    $("s-riv").hidden = !riv.length;
+    $("rivers").replaceChildren(...riv.map(r => {
+      const lim = (r.limits || []).filter(x => x != null);
+      const max = Math.max(r.value, r.forecast_max || 0, (lim[lim.length - 1] || r.value)) * 1.12 || 1;
+      const info = [SPA[r.stage] || ""];
+      if (lim.length) info.push(`SPA: ${lim.join(", ")} ${r.unit}`);
+      if (r.rise != null && r.rise >= 5) info.push(`stoupá o ${r.rise} cm za 3 h`);
+      if (r.forecast_max != null) info.push(`předpověď max ${r.forecast_max} ${r.unit}`);
+      if (r.time) info.push(fmtTime(r.time));
+      const li = row(mini(Math.min(3, r.stage || 0)), r.name, `${r.value} ${r.unit}`, null);
+      li.append(gauge(r.value, max, (r.limits || []).slice(0, 3).map((x, n) => ({at:x, level:n + 1})),
+        {level: Math.min(3, r.stage || 0), forecast: r.forecast_max, label:`${r.value} ${r.unit}`}), el("span", {class:"info", text: info.join(", ")}));
+      return li;
     }));
+    const radRows = zones.concat(rad.national && rad.national.n ? [rad.national] : []);
+    $("s-rad").hidden = !radRows.length;
+    const warn = rad.warn || 0.6, alarm = rad.alarm || 2;
+    $("radiation").replaceChildren(...radRows.map(z => {
+      const info = [`medián ${uSv(z.median)}`, `${z.n} sond`, `nejvyšší ${z.max_name}`];
+      if (z.rising) info.push(`${z.rising} nad svým normálem`);
+      const li = row(mini(z.level || 0), z.name, uSv(z.max), null);
+      li.append(gauge(z.max, warn * 1.6, [{at: 0.2, level: 0}, {at: warn, level: 2}], {level: z.level || 0, label: uSv(z.max)}),
+        el("span", {class:"info", text: info.join(", ") + (rad.time ? `, ${fmtTime(rad.time)}` : "")}));
+      return li;
+    }));
+    $("s-gas").hidden = !gas.length;
+    $("gas").replaceChildren(...gas.map(g => {
+      const li = row(mini(g.level), g.name, `${Math.round(g.full)} %`, null);
+      li.append(gauge(g.full, 100, [{at:10, level:2}, {at:20, level:1}], {level: g.level, label:`${Math.round(g.full)} %`}),
+        el("span", {class:"info", text: [g.days ? `při dnešním odběru vystačí na ${g.days} dní` : (g.net_gwh < 0 ? "zásobníky se plní" : ""),
+          g.trend != null ? `${fmtNum(g.trend)} % za den` : "", g.day ? `stav k ${fmtDate(g.day)}` : ""].filter(Boolean).join(", ")}));
+      return li;
+    }));
+    $("s-net").hidden = !net.length;
+    $("internet").replaceChildren(...net.map(n => row(mini(n.level), n.name, n.level ? "výpadek" : "v pořádku",
+      n.down.length ? `kritický pokles: ${n.down.join(", ")}` : "bez kritického poklesu")));
+    $("s-space").hidden = sp.now == null;
+    if (sp.now != null) {
+      const gs = el("div", {class:"gscale", role:"img", "aria-label":`G${sp.now}, předpověď G${sp.max}`},
+        ...[0,1,2,3,4,5].map(n => el("i", {class: n <= sp.now ? "on" : (n <= sp.max ? "fc" : null)})));
+      const li = row(mini(sp.now >= 5 ? 2 : sp.now >= 4 ? 1 : 0), "Geomagnetická bouře", `G${sp.now}`, null);
+      li.append(gs, el("span", {class:"info", text: sp.max > sp.now ? `předpověď až G${sp.max}${sp.day ? ` (${fmtDate(sp.day)})` : ""}, obrys = předpověď` : "předpověď bez zhoršení"}));
+      $("space").replaceChildren(li);
+    }
+    $("s-quake").hidden = !Array.isArray(qk.quakes);
+    $("quakes").replaceChildren(...((qk.quakes || []).length
+      ? qk.quakes.slice(0, 8).map(q => row(mini(q.mag >= 5 ? 2 : q.mag >= 3.5 ? 1 : 0), `M${dec(q.mag)} ${q.place || q.zone}`,
+          fmtTime(q.time), `${q.zone}` + (q.depth != null ? `, hloubka ${q.depth} km` : "")))
+      : [row(mini(0), "Klid", "", `Za ${qk.days || 7} dní žádný otřes od M${dec(qk.min_mag || 2)}.`)]));
+    const gd = s.gdelt || [];
+    $("s-world").hidden = !gd.length;
+    $("world").replaceChildren(...gd.map(g => row(mini(g.ratio >= 4 ? 1 : 0), g.name, `${dec(g.ratio)}×`,
+      g.ratio >= 2 ? "víc zpráv než obvykle" : "běžná úroveň")));
+
+    const hist = s.history || [];
+    $("hist-count").textContent = hist.length ? `(${hist.length})` : "";
+    $("history").replaceChildren(...(hist.length ? hist.map(h => el("li", null,
+      el("time", {datetime:h.time, text:`${fmtTime(h.time)}${h.channels && h.channels.length ? ", " + h.channels.join(", ") : ", neodesláno"}`}),
+      el("strong", {text:h.title}), el("br"), el("span", {text:h.message.split("\n")[0]}))) :
+      [el("li", {text:"Zatím nic neodešlo."})]));
+    openState($("d-hist"), "hist", false);
+    $("src-count").textContent = `${okSrc} z ${s.sources.length} funguje`;
+    openState($("d-src"), "src", okSrc < s.sources.length);
+    if (okSrc < s.sources.length) $("d-src").open = true;
+    $("sources").replaceChildren(...s.sources.map(x => row(lamp(x.ok ? 0 : 3), x.label + (x.ok ? "" : " – nefunguje"), "",
+      x.ok ? x.info : x.error)));
+    const sigLv = Math.max(0, ...[...document.querySelectorAll("#tab-signaly .mini")].map(n => +n.dataset.level || 0));
+    $("dot-sig").hidden = !(sigLv >= 1 || okSrc < s.sources.length);
+    $("dot-sig").dataset.level = sigLv >= 1 ? sigLv : 1;
+    $("dot-sig").textContent = "";
+
+    // ── PŘÍPRAVA ──
+    const docs = prepItems.filter(i => i.druh === "platnost" || (!i.druh && i.plati_do));
+    const tasks = prepItems.filter(i => !docs.includes(i));
+    const okN = prepItems.filter(i => i.stav === "ok" || i.stav === "volitelne").length;
+    const C = 2 * Math.PI * 34;
+    const ring = sv("svg", {class:"ring", viewBox:"0 0 84 84", "aria-hidden":"true"},
+      sv("circle", {class:"bg", cx:42, cy:42, r:34}),
+      sv("circle", {class:"fg", cx:42, cy:42, r:34, "stroke-dasharray": `${prepItems.length ? C * okN / prepItems.length : 0} ${C}`}),
+      sv("text", {x:42, y:43}, `${okN}/${prepItems.length}`));
+    const nextExp = docs.filter(i => i.dni != null).sort((a, b) => a.dni - b.dni)[0];
+    $("prep-sum").replaceChildren(ring, el("div", null,
+      el("strong", {text: prepBad.length ? `Zbývá vyřídit ${prepItems.length - okN}` : (okN === prepItems.length ? "Vše připraveno" : `Zbývá doplnit ${prepItems.length - okN}`)}),
+      el("p", {class:"muted", text: nextExp ? `Nejdřív končí: ${nextExp.nazev}, ${fmtDate(nextExp.plati_do)}.` : "Doplň data platnosti dokladů, hlídač tě pak upozorní 60, 30 a 7 dní předem."})));
+    $("prep-sum").hidden = !prepItems.length;
+    $("h-doc").hidden = !docs.length; $("h-task").hidden = !tasks.length;
+    const docLv = i => i.stav === "propadle" ? 3 : i.stav === "brzy" ? (i.dni <= 30 ? 2 : 1) : i.stav === "chybi_datum" ? 1 : 0;
+    const withLink = (span, i) => { const u = safeUrl(i.odkaz); if (u) span.append(" ", el("a", {href:u, target:"_blank", rel:"noopener", text:"Otevřít web"})); return span; };
+    $("docs").replaceChildren(...docs.map(i => {
+      const li = row(mini(docLv(i)), i.nazev, i.plati_do ? fmtDate(i.plati_do) : "chybí datum", null);
+      if (i.dni != null) li.append(gauge(Math.max(0, i.dni), 365, [{at:30, level:2}, {at:60, level:1}], {level: docLv(i)}));
+      const info = [i.dni == null ? "" : i.dni < 0 ? `propadlé ${-i.dni} dní` : `platí ještě ${i.dni} dní`, i.pozn].filter(Boolean).join(". ");
+      if (info || i.odkaz) li.append(withLink(el("span", {class:"info", text: info}), i));
+      return li;
+    }));
+    $("tasks").replaceChildren(...tasks.map(i => {
+      const icon = el("span", {class: `task${i.stav === "ok" ? " done" : ""}${i.stav === "volitelne" ? " opt" : ""}`, "aria-hidden":"true"});
+      const li = row(icon, i.nazev, i.stav_text, null);
+      if (i.pozn || i.odkaz) li.append(withLink(el("span", {class:"info", text: i.pozn || ""}), i));
+      return li;
+    }));
+    const lists = s.seznamy || [];
     $("lists").replaceChildren(...lists.map(L => {
       const key = it => `chk:${L.id}:${it}`;
-      const small = el("small");
-      const upd = () => { small.textContent = `${L.polozky.filter(it => store.get(key(it)) === "1").length} z ${L.polozky.length}`; };
+      const small = el("small"), bar = el("i");
+      const upd = () => {
+        const n = L.polozky.filter(it => store.get(key(it)) === "1").length;
+        small.textContent = `${n} z ${L.polozky.length}`;
+        bar.style.width = `${L.polozky.length ? n / L.polozky.length * 100 : 0}%`;
+      };
       const ul = el("ul", {class:"todo"}, ...L.polozky.map(it => {
         const cb = el("input", {type:"checkbox"});
         cb.checked = store.get(key(it)) === "1";
@@ -531,29 +842,17 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
         return el("li", null, el("label", null, cb, el("span", {text: it})));
       }));
       upd();
-      return openState(el("details", null, el("summary", null, L.nazev, small), ul), `l:${L.id}`, false);
+      return el("div", null, openState(el("details", null, el("summary", null, L.nazev, small), ul), `l:${L.id}`, false),
+        el("div", {class:"prog", "aria-hidden":"true"}, bar));
     }));
+    const dp = $("dot-prep");
+    dp.hidden = !prepBad.length;
+    dp.textContent = prepBad.length;
+    dp.dataset.level = prepBad.some(i => i.stav === "propadle") ? 3 : 2;
 
-    // historie
-    const hist = s.history || [];
-    $("hist-count").textContent = hist.length ? `(${hist.length})` : "";
-    $("history").replaceChildren(...(hist.length ? hist.map(h => el("li", null,
-      el("time", {datetime:h.time, text:`${fmtTime(h.time)}${h.channels && h.channels.length ? ", " + h.channels.join(", ") : ", neodesláno"}`}),
-      el("strong", {text:h.title}), el("br"), el("span", {text:h.message.split("\n")[0]}))) :
-      [el("li", {text:"Zatím nic neodešlo."})]));
-
-    // zdroje
-    const ok = s.sources.filter(x => x.ok).length;
-    $("src-count").textContent = `${ok} z ${s.sources.length} funguje`;
-    if (ok < s.sources.length) $("d-src").open = true;
-    $("sources").replaceChildren(...s.sources.map(x => el("li", null,
-      el("span", {class: "lamp" + (x.ok ? "" : " bad"), "aria-hidden":"true"}),
-      el("span", {text: x.label + (x.ok ? "" : " – nefunguje")}),
-      el("span", {class:"info", text: x.ok ? x.info : x.error}))));
-
-    $("foot").textContent = s.channels && s.channels.length
-      ? `Upozornění chodí přes ${s.channels.join(", ")}.`
-      : "Upozornění zatím nejsou nastavená.";
+    $("foot").textContent = (s.channels && s.channels.length
+      ? `Upozornění chodí přes ${s.channels.join(", ")}.` : "Upozornění zatím nejsou nastavená.") +
+      " Podklad mapy: Natural Earth.";
     rendered = true;
   }
 
@@ -590,21 +889,26 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
 
   function showLocked(msg){
     $("placard").dataset.level = "x";
-    document.querySelectorAll(".scale i").forEach(i => i.classList.remove("on"));
+    document.documentElement.style.setProperty("--lv", "#5B666B");
+    document.querySelectorAll(".ladder i").forEach(i => i.classList.remove("on"));
     $("level").textContent = "Zamčeno";
     $("reason").textContent = msg;
-    $("meta").textContent = "";
+    $("when").textContent = "";
     $("stale").hidden = true;
     $("dest").hidden = true;
     $("unlock").hidden = false;
-    document.querySelector("main").hidden = true;
+    $("main").hidden = true;
+    $("tabbar").hidden = true;
   }
 
   async function load(){
+    const btn = $("refresh");
+    btn.classList.remove("spin"); void btn.offsetWidth; btn.classList.add("spin");
     try {
       const s = await fetchStatus();
       $("unlock").hidden = true;
-      document.querySelector("main").hidden = false;
+      $("main").hidden = false;
+      $("tabbar").hidden = false;
       render(s);
     } catch (e) {
       if (e.message === "locked") showLocked("Zadej kód, který máš v odkazu za znaky ?k=");
@@ -629,6 +933,7 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
   $("refresh").addEventListener("click", load);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
   setInterval(load, 60000);
+  setTab((location.hash || "").slice(1));
   load();
   if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 })();

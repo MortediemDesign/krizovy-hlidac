@@ -1,6 +1,6 @@
 # Krizový hlídač
 
-Osobní systém včasného varování před válkou, rozsáhlým blackoutem a katastrofami. Každých 10 minut projde oficiální zdroje i zprávy a ohodnotí situaci stupněm 0–3 pro domov, práci, Evropu a zvolené útočiště. Když se něco zhorší, pošle upozornění na mobil. Webový dashboard ukazuje stav, co dělat teď a plán odjezdu.
+Osobní systém včasného varování před válkou, rozsáhlým blackoutem a katastrofami. Každých 10 minut projde oficiální zdroje i zprávy a ohodnotí situaci stupněm 0–3 pro domov, práci, Evropu a zvolené útočiště. Když se něco zhorší, pošle upozornění na mobil. Webový dashboard (aplikace na plochu telefonu) má čtyři záložky: **Stav** (stupeň, oblasti, přehled ukazatelů, co se děje), **Plán** (mapa Evropy s trasami a útočišti, trasy do offline map), **Signály** (vodočty, radiace, plyn, internet, kosmické počasí, zemětřesení, zdroje) a **Příprava** (platnost dokladů, úkoly před cestou, seznamy na 72 hodin).
 
 | Stupeň | Význam | Typický spouštěč |
 |---|---|---|
@@ -117,6 +117,7 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 | Poslanecká sněmovna (otevřená data) | nové sněmovní tisky: stav ohrožení státu, válečný stav, mobilizace |
 | EASA | bulletiny o konfliktních zónách pro civilní letectví |
 | EMSC | zemětřesení v okolí domova |
+| Natural Earth (world-atlas) | podklad mapy v dashboardu (`web/mapa.json`, volné dílo) |
 | ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC, MAAE, SÚJB | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
 
 Nefunkční zdroj ukáže dashboard v části Zdroje. Když jich nefunguje většina, místo „Klid“ ukáže „Bez dat“.
