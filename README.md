@@ -91,7 +91,7 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 - **`news.rules`**: pravidla pro titulky. Regulární výrazy piš **malými písmeny bez diakritiky**. `single` = stupeň při 1 zdroji, `confirmed` = při ≥ 2 nezávislých zdrojích, `feeds` = jen pro vybrané kanály.
 - **`gas`**: zásobníky plynu (GIE AGSI+). Klíč zdarma po registraci na agsi.gie.eu → secret `AGSI_KEY` (nebo `"env": {"AGSI_KEY": "…"}` v šifrované konfiguraci). Pod `sledovat_pod_pct` → 🟡, pod `pripravit_pod_pct` → 🟠; totéž pro počet dní, na které by zásobníky vystačily při dnešním odběru.
 - **`internet`**: výpadky internetu celých zemí (IODA). Kritický pokles ve dvou měřeních → 🟠, v jednom → 🟡, samotné teleskopy se ignorují.
-- **`gdelt.dotazy`**: témata, u kterých se hlídá prudký nárůst zpráv ve světě (GDELT, 65 jazyků). Dotaz v angličtině, `pomer` = kolikrát víc než běžný den. Každý běh se ptá na jedno téma.
+- **`gdelt.dotazy`**: témata, u kterých se hlídá prudký nárůst zpráv ve světě (GDELT, 65 jazyků). Dotaz v angličtině, `pomer` = kolikrát víc než běžný den. Každý běh se ptá na jedno téma. Ve výchozím stavu vypnuto: z GitHub Actions GDELT dotazy odmítá (HTTP 429), na vlastním serveru zapni `enabled: true`.
 - **`nukib`, `psp`, `easa`**: úřední signály – varování NÚKIB před útoky, nové sněmovní tisky o stavu ohrožení státu nebo mobilizaci (první běh si zapamatuje výchozí stav a staré tisky nehlásí) a bulletiny EASA o konfliktních zónách v Evropě.
 - **`zemetreseni`**: otřesy v okolí domova (EMSC). Výchozí výřez je Chebsko a Vogtland, nejaktivnější seismická oblast Česka.
 - **`notify.repeat_level3_minutes`**: jak často opakovat upozornění, dokud trvá 🔴 (0 = vypnuto).

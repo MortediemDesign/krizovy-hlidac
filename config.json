@@ -706,7 +706,7 @@
     ]
   },
   "gdelt": {
-    "enabled": true,
+    "enabled": false,
     "timespan": "7d",
     "okno_hodin": 6,
     "pomer": 4,
@@ -732,7 +732,8 @@
         "nazev": "Rozsáhlý blackout",
         "dotaz": "(\"nationwide blackout\" OR \"massive blackout\" OR \"grid collapse\")"
       }
-    ]
+    ],
+    "pozn": "Z GitHub Actions GDELT odmítá dotazy (HTTP 429). Na vlastním serveru zapni enabled: true."
   },
   "nukib": {
     "enabled": true,
