@@ -707,7 +707,7 @@
   },
   "gdelt": {
     "enabled": true,
-    "timespan": "14d",
+    "timespan": "7d",
     "okno_hodin": 6,
     "pomer": 4,
     "min": 0.02,

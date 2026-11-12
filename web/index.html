@@ -488,7 +488,7 @@ footer button{background:none;border:1px solid var(--line);color:var(--ink);bord
     if (gd.length) {
       sig.append(el("p", {class:"sub", text:"Kolik o tom píše svět"}), el("ul", {class:"rivers"}, ...gd.map(g => sigRow(g.ratio >= 4 ? 1 : 0, g.name,
         `${String(g.ratio).replace(".", ",")}×`, g.ratio >= 2 ? "víc zpráv než obvykle" : "běžná úroveň"))),
-        el("p", {class:"attr", text:"Data: GDELT, zprávy v 65 jazycích. Poměr = posledních 6 hodin proti běžnému dni."}));
+        el("p", {class:"attr", text:"Data: GDELT, zprávy v 65 jazycích. Poměr = posledních 6 hodin proti běžnému dni za poslední týden."}));
     }
     const qk = s.quakes || {};
     if (Array.isArray(qk.quakes)) {

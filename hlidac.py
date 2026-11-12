@@ -801,6 +801,8 @@ def gdelt_points(raw: bytes) -> list:
 def gdelt_spike(pts, now, window_h=6):
     """(teď, normál) – průměr posledních hodin proti mediánu denních průměrů předchozích dní."""
     recent = [v for t, v in pts if now - t <= timedelta(hours=window_h)]
+    if not recent and pts and now - pts[-1][0] <= timedelta(hours=30):   # hrubší rozlišení: poslední bod
+        recent = [pts[-1][1]]
     days = {}
     for t, v in pts:
         if now - t > timedelta(hours=24):
@@ -820,7 +822,7 @@ def src_gdelt(cfg, fetch, mem):
     i = mem.get("i", 0) % len(queries)
     mem["i"] = i + 1
     q = queries[i]
-    url = (f"{GDELT}?query={urllib.parse.quote(q['dotaz'])}&mode=timelinevol&timespan={c.get('timespan', '14d')}"
+    url = (f"{GDELT}?query={urllib.parse.quote(q['dotaz'])}&mode=timelinevol&timespan={c.get('timespan', '7d')}"
            f"&format=json")
     pts = None
     for attempt in range(2):   # GitHub sdílí IP adresy s dalšími uživateli GDELT – při omezení jednou zkus znovu

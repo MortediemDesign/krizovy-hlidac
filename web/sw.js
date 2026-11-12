@@ -1,6 +1,6 @@
 // Service worker: aplikace se otevře i bez signálu a ukáže poslední známý stav.
 // Cesty jsou relativní, takže funguje na vlastní doméně i na GitHub Pages (/repo/).
-const CACHE = "hlidac-v5";
+const CACHE = "hlidac-v6";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "icon.svg", "icon-180.png", "icon-192.png",
   "fonts/barlow-latin-400-normal.woff2", "fonts/barlow-latin-ext-400-normal.woff2",
