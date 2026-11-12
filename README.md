@@ -63,7 +63,7 @@ hlidac.example.cz {
 
 **Telegram (zdarma):** u @BotFather vytvoř bota → `TELEGRAM_TOKEN`. Napiš botovi cokoli a otevři `https://api.telegram.org/bot<TOKEN>/getUpdates`. Číslo `chat.id` → `TELEGRAM_CHAT_ID`.
 
-**ntfy (Android nebo záloha):** do `NTFY_TOPIC` dej dlouhý tajný název a stejné téma odebírej v aplikaci ntfy. Na iOS nepodporuje naléhavé priority.
+**ntfy (zdarma, bez účtu):** vymysli dlouhý náhodný název tématu (aspoň 20 znaků). Kdo název zná, čte tvoje zprávy, takže ho ber jako heslo. Téma odebírej v aplikaci ntfy (+ → Subscribe to topic) a stejný název dej do `NTFY_TOPIC`. Odkaz ve zprávě kód k webu neobsahuje, prohlížeč si ho pamatuje z prvního otevření. Na iOS ntfy nepodporuje naléhavé priority, proto v Nastavení → Soustředění → Nerušit → Aplikace přidej ntfy mezi povolené.
 
 Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a každou neděli v 18:00 krátké „běžím“. Na healthchecks.io (zdarma) si můžeš nastavit hlídání, jestli hlídač běží.
 

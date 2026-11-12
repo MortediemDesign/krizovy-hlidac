@@ -396,6 +396,28 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(hlidac.load_config()["plan"]["cil"], "secret")          # secret má přednost
 
 
+class TestNotify(unittest.TestCase):
+    def test_ntfy_defaults_and_no_token(self):
+        saved_env, saved_post = dict(os.environ), hlidac.http_post
+        calls = []
+        hlidac.http_post = lambda url, form=None, js=None, timeout=20: calls.append((url, js)) or b"{}"
+        try:
+            for k in ("PUSHOVER_TOKEN", "PUSHOVER_USER", "TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID"):
+                os.environ.pop(k, None)
+            os.environ.update(NTFY_TOPIC="tajne-tema", NTFY_SERVER="")      # prázdný secret z Actions
+            sent = hlidac.send_notification("🔴 ODJEĎ", "zpráva", 3, "https://x.github.io/krizovy-hlidac/?k=TAJNE")
+        finally:
+            os.environ.clear()
+            os.environ.update(saved_env)
+            hlidac.http_post = saved_post
+        self.assertEqual(sent, ["ntfy"])
+        url, body = calls[0]
+        self.assertEqual(url, "https://ntfy.sh/")
+        self.assertEqual((body["topic"], body["priority"]), ("tajne-tema", 5))
+        self.assertEqual(body["click"], "https://x.github.io/krizovy-hlidac/")
+        self.assertNotIn("TAJNE", json.dumps(body))
+
+
 class TestServer(unittest.TestCase):
     def test_token_and_paths(self):
         import threading

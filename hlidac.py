@@ -545,11 +545,12 @@ def send_notification(title: str, message: str, level: int, url: str = "") -> li
         except Exception as e:
             log("Telegram selhal:", e)
     if os.environ.get("NTFY_TOPIC"):
-        server = os.environ.get("NTFY_SERVER", "https://ntfy.sh").rstrip("/")
+        server = (os.environ.get("NTFY_SERVER") or "https://ntfy.sh").rstrip("/")   # prázdný secret = výchozí server
         body = {"topic": os.environ["NTFY_TOPIC"], "title": title, "message": message,
                 "priority": {0: 2, 1: 3, 2: 4, 3: 5}[level], "tags": [["white_check_mark", "warning", "rotating_light", "rotating_light"][level]]}
         if url:
-            body["click"] = url
+            # ntfy.sh je veřejný server – kód k webu do odkazu nedávej, prohlížeč si ho pamatuje
+            body["click"] = re.sub(r"[?&]k=[^&#]*", "", url)
         try:
             http_post(server + "/", js=body)
             sent.append("ntfy")
