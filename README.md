@@ -90,6 +90,7 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 - **`chmi_hydro`**: vodočty ČHMÚ (ID stanice z `opendata.chmi.cz/hydrology/now/metadata/meta1.json`). Hranice SPA se načtou samy. `levels` převádí SPA na stupeň hlídače (výchozí 2. SPA → 🟡, 3. SPA → 🟠, extrémní povodeň → 🔴), hlídá se i předpověď na 48 h a rychlé stoupání hladiny.
 - **`news.rules`**: pravidla pro titulky. Regulární výrazy piš **malými písmeny bez diakritiky**. `single` = stupeň při 1 zdroji, `confirmed` = při ≥ 2 nezávislých zdrojích, `feeds` = jen pro vybrané kanály.
 - **`gas`**: zásobníky plynu (GIE AGSI+). Klíč zdarma po registraci na agsi.gie.eu → secret `AGSI_KEY` (nebo `"env": {"AGSI_KEY": "…"}` v šifrované konfiguraci). Pod `sledovat_pod_pct` → 🟡, pod `pripravit_pod_pct` → 🟠; totéž pro počet dní, na které by zásobníky vystačily při dnešním odběru.
+- **`lng`, `plyn_vypadky`**: stejný klíč `AGSI_KEY` platí i pro LNG terminály (ALSI) a urgentní hlášení provozovatelů (IIP). Dovoz LNG pod `pokles_pod` (30 %) obvyklé úrovně → 🟡. Neplánované výpadky se sčítají po zemích v GWh/d: od `sledovat_gwh` → 🟡, od `pripravit_gwh` → 🟠. Plynovody se přiřazují k zemi podle názvu provozovatele (`provozovatele`), protože IIP nemá filtr země.
 - **`internet`**: výpadky internetu celých zemí (IODA). Kritický pokles ve dvou měřeních → 🟠, v jednom → 🟡, samotné teleskopy se ignorují.
 - **`gdelt.dotazy`**: témata, u kterých se hlídá prudký nárůst zpráv ve světě (GDELT, 65 jazyků). Dotaz v angličtině, `pomer` = kolikrát víc než běžný den. Každý běh se ptá na jedno téma. Ve výchozím stavu vypnuto: z GitHub Actions GDELT dotazy odmítá (HTTP 429), na vlastním serveru zapni `enabled: true`.
 - **`nukib`, `psp`, `easa`**: úřední signály – varování NÚKIB před útoky, nové sněmovní tisky o stavu ohrožení státu nebo mobilizaci (první běh si zapamatuje výchozí stav a staré tisky nehlásí) a bulletiny EASA o konfliktních zónách v Evropě.
@@ -111,6 +112,8 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 | Autobahn GmbH | uzavírky a kolony na německých dálnicích tras |
 | Tankerkönig (CC BY 4.0) | otevřené pumpy a ceny nafty na trase (volitelné) |
 | GIE AGSI+ | plyn v zásobnících v Německu, Česku a EU (volitelné, klíč zdarma) |
+| GIE ALSI | dodávky z LNG terminálů do Německa – prudký pokles proti obvyklým dnům (stejný klíč) |
+| GIE IIP + hlášení zásobníků a terminálů | neplánované výpadky plynovodů, zásobníků a LNG terminálů v Německu a Česku (stejný klíč) |
 | IODA (Georgia Tech) | výpadky internetu celých zemí – nezávislý signál blackoutu nebo kyberútoku |
 | GDELT | prudký nárůst světových zpráv na sledovaná témata |
 | NÚKIB | úřední varování před kybernetickými útoky |

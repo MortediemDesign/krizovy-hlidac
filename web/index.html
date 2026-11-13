@@ -313,6 +313,10 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
         Rakousko: <a href="https://mb.strahlenschutz.gv.at/" target="_blank" rel="noopener">mapa</a>.</p></section>
     <section id="s-gas" hidden><h2>Plyn v zásobnících</h2><ul class="rows" id="gas"></ul>
       <p class="attr">Data: GIE AGSI+. Ryska = 10 a 20 %. Dny = jak dlouho by zásobníky stačily bez dovozu při dnešním odběru.</p></section>
+    <section id="s-imp" hidden><h2>Dovoz a výpadky plynu</h2><ul class="rows" id="imports"></ul>
+      <p class="sub" id="h-out">Neplánované výpadky teď</p><ul class="rows" id="outages"></ul>
+      <p class="attr">Data: GIE – LNG terminály (ALSI) a hlášení provozovatelů zásobníků a plynovodů. Ryska = obvyklé dodávky.
+        Výpadek snižuje kapacitu, nemusí hned znamenat méně plynu.</p></section>
     <section id="s-net" hidden><h2>Internet celých zemí</h2><ul class="rows" id="internet"></ul>
       <p class="attr">Data: IODA (Georgia Tech). Výpadek celé země bývá první známkou blackoutu nebo kyberútoku.</p></section>
     <section id="s-space" hidden><h2>Kosmické počasí</h2><ul class="rows" id="space"></ul>
@@ -620,6 +624,15 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       ov.push(row(mini(top.level), "Plyn v zásobnících", `${Math.round(top.full)} %`,
         gas.map(g => `${g.code} ${Math.round(g.full)} %`).join(", "), go("s-gas")));
     }
+    const lng = (s.lng && s.lng.zeme) || [];
+    const outReg = (s.gasout && s.gasout.oblasti) || [], outItems = (s.gasout && s.gasout.items) || [];
+    if (lng.length || outReg.length) {
+      const lvImp = Math.max(0, ...lng.map(g => g.level || 0), ...outReg.map(r => r.level || 0));
+      const parts = lng.map(g => `LNG ${g.code} ${g.send} GWh/d` + (g.base ? ` (obvykle ${g.base})` : ""))
+        .concat(outReg.filter(r => r.n).map(r => `výpadky ${r.code} ${r.gwh} GWh/d`));
+      ov.push(row(mini(lvImp), "Dovoz plynu", lvImp ? "pozor" : "v pořádku",
+        parts.join(", ") + (outReg.length && !outReg.some(r => r.n) ? ", bez neplánovaných výpadků" : ""), go("s-imp")));
+    }
     const net = (s.internet && s.internet.zeme) || [];
     if (net.length) {
       const bad = net.filter(n => n.level);
@@ -758,6 +771,21 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
           g.trend != null ? `${fmtNum(g.trend)} % za den` : "", g.day ? `stav k ${fmtDate(g.day)}` : ""].filter(Boolean).join(", ")}));
       return li;
     }));
+    $("s-imp").hidden = !lng.length && !outReg.length;
+    $("imports").replaceChildren(
+      ...lng.map(g => {
+        const li = row(mini(g.level), `LNG terminály – ${g.name}`, `${g.send} GWh/d`, null);
+        const max = Math.max(g.send, g.base || 0) * 1.4 || 1;
+        li.append(gauge(g.send, max, g.base ? [{at: g.base}, {at: g.base * 0.3, level: 1}] : [], {level: g.level, label:`${g.send} GWh/d`}),
+          el("span", {class:"info", text: [g.base ? `obvykle ${g.base} GWh/d` : "", g.fill != null ? `v nádržích ${g.fill} % kapacity` : "",
+            g.day ? `stav k ${fmtDate(g.day)}` : ""].filter(Boolean).join(", ")}));
+        return li;
+      }),
+      ...outReg.map(r => row(mini(r.level), `Výpadky – ${r.name}`, `${r.gwh} GWh/d`,
+        r.n ? `${r.n} neplánovaných hlášení (zásobníky, LNG, plynovody)` : "žádný neplánovaný výpadek")));
+    $("h-out").hidden = !outItems.length;
+    $("outages").replaceChildren(...outItems.map(i => row(lamp(null), i.name, i.gwh != null ? `−${i.gwh} GWh/d` : "",
+      [`${i.kind}, ${i.code}`, i.to ? `do ${fmtTime(i.to)}` : "konec neznámý", i.pozn].filter(Boolean).join(", "))));
     $("s-net").hidden = !net.length;
     $("internet").replaceChildren(...net.map(n => row(mini(n.level), n.name, n.level ? "výpadek" : "v pořádku",
       n.down.length ? `kritický pokles: ${n.down.join(", ")}` : "bez kritického poklesu")));

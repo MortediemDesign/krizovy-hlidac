@@ -818,5 +818,42 @@
         "odkaz": "https://www.zbe.barcelona/"
       }
     ]
+  },
+  "lng": {
+    "enabled": true,
+    "refresh_hours": 6,
+    "pokles_pod": 0.3,
+    "min_normal_gwh": 50,
+    "zeme": [
+      {
+        "code": "DE",
+        "name": "Německo",
+        "region": "DE"
+      }
+    ]
+  },
+  "plyn_vypadky": {
+    "enabled": true,
+    "refresh_minutes": 30,
+    "iip_pages": 3,
+    "zeme": [
+      {
+        "code": "DE",
+        "name": "Německo",
+        "region": "DE",
+        "lng": true,
+        "sledovat_gwh": 300,
+        "pripravit_gwh": 1000,
+        "provozovatele": "open grid|gascade|ontras|gasunie deutschland|thyssengas|fluxys (tenp|deutschland)|nel gastransport|opal gas|terranets|bayernets|nowega|grtgaz deutschland|lubmin|ferngas|gastransport nord|deudan|trading hub europe"
+      },
+      {
+        "code": "CZ",
+        "name": "Česko",
+        "region": "CZ",
+        "sledovat_gwh": 100,
+        "pripravit_gwh": 300,
+        "provozovatele": "net4gas"
+      }
+    ]
   }
 }

@@ -712,6 +712,157 @@ def src_gas(cfg, fetch, mem):
     return events, info, {"zeme": mem["zeme"], "time": mem.get("time", "")}
 
 
+ALSI = "https://alsi.gie.eu/api"
+IIP = "https://iip.gie.eu/api"
+GIE_UNITS = {"gwh/d": 1, "mwh/d": 1e-3, "kwh/d": 1e-6, "gwh/h": 24, "mwh/h": 24e-3, "kwh/h": 24e-6}
+
+
+def _gie_rows(raw) -> list:
+    """Řádky z odpovědi GIE (AGSI/ALSI/IIP). Jiný formát = chyba, ne tiché „nic se neděje“."""
+    j = json.loads(raw)
+    if isinstance(j, dict) and j.get("error"):
+        raise RuntimeError(f"GIE: {j['error']}"[:150])
+    rows = j.get("data", j) if isinstance(j, dict) else j
+    if not isinstance(rows, list):
+        raise RuntimeError("GIE: neznámý formát odpovědi " + (str(list(j)[:6]) if isinstance(j, dict) else type(j).__name__))
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def _gwh(x):
+    return _num(x.get("gwh")) if isinstance(x, dict) else _num(x)
+
+
+def _gwh_day(cap, unit):
+    v, u = _num(cap), re.sub(r"\s+", "", str(unit or "")).lower()
+    if v is None:
+        return None
+    return next((v * f for k, f in GIE_UNITS.items() if u.startswith(k)), None)
+
+
+def _running(start, end, now) -> bool:
+    s = parse_date(str(start)) if start else None
+    e = parse_date(str(end)) if end else None
+    return (s is None or s <= now) and (e is None or e >= now)
+
+
+def _name(x):
+    return (x.get("name") or "") if isinstance(x, dict) else str(x or "")
+
+
+LNG_ADVICE = ("Prudký pokles dovozu zkapalněného plynu. Může jít o počasí nebo zpoždění lodí, "
+              "ale i o problém s dodávkami – sleduj zprávy a zásobníky.")
+
+
+def src_lng(cfg, fetch, mem):
+    """Dodávky z LNG terminálů (GIE ALSI). Hlídá prudký pokles proti obvyklým dnům."""
+    c = cfg["lng"]
+    key = os.environ.get("AGSI_KEY", "")
+    if not key:
+        return [], "vypnuto – chybí klíč AGSI_KEY", {"zeme": []}
+    now = utcnow()
+    if _due(mem, "time", c.get("refresh_hours", 6), now) or not mem.get("zeme"):
+        out = []
+        for z in c["zeme"]:
+            rows = _gie_rows(fetch(f"{ALSI}?country={z['code'].lower()}&size=30", headers={"x-key": key}))
+            rows = sorted((r for r in rows if _num(r.get("sendOut")) is not None and r.get("gasDayStart")),
+                          key=lambda r: str(r["gasDayStart"]), reverse=True)
+            if not rows:
+                raise RuntimeError(f"ALSI {z['code']}: odpověď bez dat")
+            cur = rows[0]
+            hist = sorted(_num(r["sendOut"]) for r in rows[1:15])
+            inv, cap = _gwh(cur.get("inventory")), _gwh(cur.get("dtmi"))
+            out.append({"code": z["code"].upper(), "name": z.get("name", z["code"]), "region": z.get("region", "EU"),
+                        "day": cur["gasDayStart"], "send": round(_num(cur["sendOut"])),
+                        "base": round(hist[len(hist) // 2]) if hist else None,
+                        "fill": round(inv / cap * 100) if inv is not None and cap else None,
+                        "cap": _num(cur.get("dtrs"))})
+        mem["zeme"], mem["time"] = out, iso(now)
+    events = []
+    for g in mem["zeme"]:
+        base = g.get("base")
+        g["level"] = 1 if (base and base >= c.get("min_normal_gwh", 50)
+                           and g["send"] < base * c.get("pokles_pod", 0.3)) else 0
+        if g["level"]:
+            events.append(make_event("LNG (ALSI)", g["region"], 1,
+                                     f"Dovoz LNG – {g['name']}: {g['send']} GWh/d, obvykle {base} GWh/d",
+                                     url="https://alsi.gie.eu/", eid=f"lng:{g['code']}", detail=LNG_ADVICE))
+    info = ", ".join(f"{g['code']} {g['send']} GWh/d (obvykle {g.get('base')})" for g in mem["zeme"])
+    return events, info, {"zeme": mem["zeme"], "time": mem.get("time", "")}
+
+
+OUTAGE_NOTE = "Neplánovaný výpadek snižuje kapacitu – nemusí hned znamenat méně plynu, ale zhoršuje rezervu."
+
+
+def src_gas_outages(cfg, fetch, mem):
+    """Neplánované výpadky plynové infrastruktury (GIE): zásobníky (AGSI), LNG terminály (ALSI)
+    a plynovody (IIP, urgentní zprávy provozovatelů přepravních soustav)."""
+    c = cfg["plyn_vypadky"]
+    key = os.environ.get("AGSI_KEY", "")
+    if not key:
+        return [], "vypnuto – chybí klíč AGSI_KEY", {"oblasti": [], "items": []}
+    now = utcnow()
+    h = {"x-key": key}
+    if _due(mem, "time", c.get("refresh_minutes", 30) / 60, now) or "items" not in mem:
+        items = []
+        for z in c["zeme"]:
+            code = z["code"].upper()
+            for r in _gie_rows(fetch(f"{AGSI}/unavailability?country={code}&type=Unplanned&size=100", headers=h)):
+                if _running(r.get("start"), r.get("end"), now):
+                    items.append({"code": code, "kind": "zásobník", "name": _name(r.get("facility")) or "zásobník",
+                                  "gwh": _num(r.get("withdrawal")) or _num(r.get("injection")), "to": r.get("end"),
+                                  "pozn": str(r.get("description") or "")[:160]})
+            if z.get("lng"):
+                for r in _gie_rows(fetch(f"{ALSI}/unavailability?country={code}&type=Unplanned&size=100", headers=h)):
+                    if _running(r.get("start"), r.get("end"), now):
+                        items.append({"code": code, "kind": "LNG terminál", "name": _name(r.get("facility")) or "LNG terminál",
+                                      "gwh": _num(r.get("capacity")), "to": r.get("end"),
+                                      "pozn": str(r.get("description") or "")[:160]})
+        # plynovody: IIP nemá filtr země – provozovatele přepravní soustavy poznáme podle názvu
+        tso = [(re.compile(z["provozovatele"], re.I), z["code"].upper()) for z in c["zeme"] if z.get("provozovatele")]
+        if tso:
+            for page in range(1, c.get("iip_pages", 3) + 1):
+                rows = _gie_rows(fetch(f"{IIP}?status=active&reportingEntityType=TSO&size=300&page={page}", headers=h))
+                for r in rows:
+                    msg = r.get("message") or {}
+                    if "unplanned" not in str(msg.get("unavailabilityType", "")).lower():
+                        continue
+                    if not _running(r.get("from"), r.get("to"), now):
+                        continue
+                    ent, asset = r.get("reportingEntity") or {}, r.get("asset") or {}
+                    text = f"{_name(ent)} {_name(asset)} {r.get('balancingZone') or ''}"
+                    code = next((cd for rx, cd in tso if rx.search(text)), None)
+                    if not code:
+                        continue
+                    un = r.get("unavailable") or {}
+                    items.append({"code": code, "kind": "plynovod", "name": _name(asset) or _name(ent),
+                                  "gwh": _gwh_day(un.get("capacity"), un.get("unit")) if isinstance(un, dict) else None,
+                                  "to": r.get("to"), "pozn": str(r.get("unavailabilityReason") or r.get("remarks") or "")[:160]})
+                if len(rows) < 300:
+                    break
+        for it in items:
+            if it["gwh"] is not None:
+                it["gwh"] = round(it["gwh"])
+        mem["items"], mem["time"] = items, iso(now)
+    items = mem["items"]
+    regions, events = [], []
+    for z in c["zeme"]:
+        code = z["code"].upper()
+        mine = [i for i in items if i["code"] == code]
+        total = sum(i["gwh"] or 0 for i in mine)
+        lvl = 2 if total >= z.get("pripravit_gwh", 1000) else 1 if total >= z.get("sledovat_gwh", 300) else 0
+        regions.append({"code": code, "name": z.get("name", code), "gwh": total, "n": len(mine), "level": lvl})
+        if lvl:
+            top = sorted(mine, key=lambda i: -(i["gwh"] or 0))[:2]
+            events.append(make_event("Plyn – výpadky (GIE)", z.get("region", code), lvl,
+                                     f"Neplánované výpadky plynu – {z.get('name', code)}: {total} GWh/d ({len(mine)} hlášení)",
+                                     url="https://iip.gie.eu/", eid=f"gasout:{code}:{lvl}",
+                                     detail="Největší: " + "; ".join(f"{i['name']} ({i['kind']}, {i['gwh']} GWh/d)" for i in top)
+                                            + ". " + OUTAGE_NOTE))
+    info = ", ".join(f"{r['code']} {r['gwh']} GWh/d ({r['n']})" for r in regions)
+    top = sorted(items, key=lambda i: -(i["gwh"] or 0))[:12]
+    return events, info, {"oblasti": regions, "items": top, "time": mem.get("time", "")}
+
+
 IODA = "https://api.ioda.inetintel.cc.gatech.edu/v2"
 IODA_NOISY = {"merit-nt", "ucsd-nt"}   # teleskopy – samy o sobě často falešný poplach
 IODA_NAMES = {"bgp": "směrování BGP", "ping-slash24": "aktivní měření", "merit-nt": "teleskop", "ucsd-nt": "teleskop",
@@ -1045,6 +1196,8 @@ SOURCES = {
     "route":          ("Dálnice na trase (DE)", src_route, "route_status"),
     "fuel":           ("Palivo na trase (DE)", src_fuel, "fuel"),
     "gas":            ("Zásobníky plynu (AGSI)", src_gas, "gas"),
+    "lng":            ("LNG terminály (ALSI)", src_lng, "lng"),
+    "gasout":         ("Výpadky plynovodů a zásobníků (GIE)", src_gas_outages, "plyn_vypadky"),
     "ioda":           ("Výpadky internetu (IODA)", src_ioda, "internet"),
     "gdelt":          ("Objem světových zpráv (GDELT)", src_gdelt, "gdelt"),
     "nukib":          ("NÚKIB – kybernetická varování", src_nukib, "nukib"),
@@ -1653,6 +1806,8 @@ def build_status(cfg, state, events, region_levels, overall, now):
         "radiation": extras.get("bfs") or {},
         "fuel": (extras.get("fuel") or {}).get("points", {}),
         "gas": extras.get("gas") or {},
+        "lng": extras.get("lng") or {},
+        "gasout": extras.get("gasout") or {},
         "internet": extras.get("ioda") or {},
         "gdelt": (extras.get("gdelt") or {}).get("dotazy", []),
         "quakes": extras.get("emsc") or {},
@@ -1846,6 +2001,14 @@ def demo_status(cfg):
             {"code": "DE", "name": "Německo", "region": "DE", "day": "2026-11-10", "full": 58.4, "twh": 146.2, "net_gwh": 2210, "days": 66, "trend": -0.9, "level": 0},
             {"code": "CZ", "name": "Česko", "region": "CZ", "day": "2026-11-10", "full": 71.2, "twh": 31.0, "net_gwh": 310, "days": 100, "trend": -0.7, "level": 0},
             {"code": "EU", "name": "EU", "region": "EU", "day": "2026-11-10", "full": 69.9, "twh": 791.5, "net_gwh": 7100, "days": 111, "trend": -0.6, "level": 0}]},
+        "lng": {"time": iso(now), "zeme": [{"code": "DE", "name": "Německo", "region": "DE", "day": "2026-11-11",
+                                             "send": 412, "base": 455, "fill": 61, "cap": 900, "level": 0}]},
+        "gasout": {"time": iso(now), "oblasti": [{"code": "DE", "name": "Německo", "gwh": 64, "n": 2, "level": 0},
+                                                  {"code": "CZ", "name": "Česko", "gwh": 0, "n": 0, "level": 0}],
+                   "items": [{"code": "DE", "kind": "plynovod", "name": "Waidhaus", "gwh": 48,
+                              "to": iso(now + timedelta(hours=20)), "pozn": "Porucha kompresoru"},
+                             {"code": "DE", "kind": "zásobník", "name": "UGS Etzel", "gwh": 16,
+                              "to": iso(now + timedelta(days=2)), "pozn": ""}]},
         "ioda": {"time": iso(now), "zeme": [{"code": c, "name": n, "down": [], "level": 0}
                                              for c, n in (("CZ", "Česko"), ("DE", "Německo"), ("ES", "Španělsko"))]},
         "gdelt": {"dotazy": [{"id": "nato", "name": "Útok na NATO", "cur": 0.012, "base": 0.006, "ratio": 2.0, "time": iso(now)}]},
@@ -1936,7 +2099,7 @@ def main():
                 ok = sum(1 for s in st["sources"] if s["ok"])
                 print(f"::notice title=Zdroje {ok}/{len(st['sources'])}::" + ", ".join(
                     f"{s['key']} {'OK' if s['ok'] else 'CHYBA'}" for s in st["sources"]), flush=True)
-                public = ("noaa", "gas", "ioda", "gdelt", "nukib", "psp", "easa")   # info bez míst a tras
+                public = ("noaa", "gas", "lng", "gasout", "ioda", "gdelt", "nukib", "psp", "easa")   # info bez míst a tras
                 print("::notice title=Signály::" + " · ".join(
                     f"{s['key']}: {s['info']}" for s in st["sources"] if s["key"] in public and s["ok"]), flush=True)
                 for s in st["sources"]:

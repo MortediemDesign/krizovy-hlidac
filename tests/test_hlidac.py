@@ -867,5 +867,72 @@ class TestPreparedness(unittest.TestCase):
         tmp.cleanup()
 
 
+class TestGasImports(unittest.TestCase):
+    def setUp(self):
+        os.environ["AGSI_KEY"] = "abc"
+
+    def tearDown(self):
+        os.environ.pop("AGSI_KEY", None)
+
+    @staticmethod
+    def alsi(send_today, normal=450, days=20):
+        today = datetime.now(timezone.utc).date()
+        rows = [{"name": "Germany", "code": "DE", "gasDayStart": (today - timedelta(days=d + 1)).isoformat(),
+                 "inventory": {"lng": "500", "gwh": "3300"}, "sendOut": str(send_today if d == 0 else normal),
+                 "dtmi": {"lng": "800", "gwh": "5400"}, "dtrs": "900"} for d in range(days)]
+        return json.dumps({"last_page": 1, "data": rows}).encode()
+
+    def test_lng(self):
+        os.environ.pop("AGSI_KEY")
+        self.assertIn("chybí klíč", hlidac.src_lng(CFG, FakeNet({}), {})[1])
+        os.environ["AGSI_KEY"] = "abc"
+        ev, info, extra = hlidac.src_lng(CFG, FakeNet({"alsi.gie.eu": self.alsi(430)}), {})
+        self.assertEqual(ev, [])
+        g = extra["zeme"][0]
+        self.assertEqual((g["send"], g["base"], g["fill"], g["level"]), (430, 450, 61, 0))
+        ev, info, extra = hlidac.src_lng(CFG, FakeNet({"alsi.gie.eu": self.alsi(60)}), {})
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("DE", 1)])
+        with self.assertRaises(RuntimeError):
+            hlidac.src_lng(CFG, FakeNet({"alsi.gie.eu": b'{"error": "Invalid API key"}'}), {})
+
+    def test_outages(self):
+        now = datetime.now(timezone.utc)
+        t = lambda h: (now + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        agsi = json.dumps({"data": [
+            {"country": {"code": "DE"}, "facility": {"name": "UGS Rehden", "eic": "x"}, "start": t(-5), "end": t(30),
+             "withdrawal": "250", "injection": "0", "description": "Kompressorausfall", "type": "Unplanned"},
+            {"country": {"code": "DE"}, "facility": {"name": "UGS Alt", "eic": "y"}, "start": t(-50), "end": t(-2),
+             "withdrawal": "900", "type": "Unplanned"}]}).encode()
+        alsi = json.dumps({"data": [{"facility": {"name": "Wilhelmshaven"}, "start": t(-1), "end": None,
+                                     "capacity": "120", "type": "Unplanned"}]}).encode()
+        iip = json.dumps({"data": [
+            {"reportingEntity": {"name": "Open Grid Europe GmbH", "type": "TSO"},
+             "message": {"unavailabilityType": "Unplanned"}, "status": "active", "from": t(-3), "to": t(10),
+             "asset": {"name": "Waidhaus", "direction": "entry"}, "unavailable": {"capacity": "2500000", "unit": "kWh/h"},
+             "unavailabilityReason": "Technical failure"},
+            {"reportingEntity": {"name": "NET4GAS, s.r.o.", "type": "TSO"}, "message": {"unavailabilityType": "Planned"},
+             "status": "active", "from": t(-3), "to": t(10), "asset": {"name": "Hora Sv. Kateřiny"},
+             "unavailable": {"capacity": "999", "unit": "GWh/d"}},
+            {"reportingEntity": {"name": "Snam Rete Gas", "type": "TSO"}, "message": {"unavailabilityType": "Unplanned"},
+             "status": "active", "from": t(-3), "to": t(10), "asset": {"name": "Passo Gries"},
+             "unavailable": {"capacity": "5000", "unit": "GWh/d"}}]}).encode()
+        net = FakeNet({"agsi.gie.eu/api/unavailability?country=DE": agsi, "agsi.gie.eu/api/unavailability": b'{"data": []}',
+                       "alsi.gie.eu/api/unavailability": alsi, "iip.gie.eu": iip})
+        mem = {}
+        ev, info, extra = hlidac.src_gas_outages(CFG, net, mem)
+        de = next(r for r in extra["oblasti"] if r["code"] == "DE")
+        self.assertEqual((de["gwh"], de["n"]), (250 + 120 + 60, 3))          # 2,5 GWh/h × 24 = 60 GWh/d
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("DE", 1)])
+        self.assertIn("UGS Rehden", ev[0]["detail"])
+        cz = next(r for r in extra["oblasti"] if r["code"] == "CZ")
+        self.assertEqual(cz["n"], 0)                                       # plánovaná odstávka se nepočítá
+        self.assertTrue(all("x-key" in h for _, h in net.calls))
+        n = len(net.calls)
+        hlidac.src_gas_outages(CFG, net, mem)
+        self.assertEqual(len(net.calls), n)                                # do 30 min se znovu nestahuje
+        self.assertEqual(hlidac._gwh_day("10", "MWh/h"), 0.24)
+        self.assertIsNone(hlidac._gwh_day("10", "Nm3/h"))
+
+
 if __name__ == "__main__":
     unittest.main()
