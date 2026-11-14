@@ -1,6 +1,6 @@
 # Krizový hlídač
 
-Osobní systém včasného varování před válkou, rozsáhlým blackoutem a katastrofami. Každých 10 minut projde oficiální zdroje i zprávy a ohodnotí situaci stupněm 0–3 pro domov, práci, Evropu a zvolené útočiště. Když se něco zhorší, pošle upozornění na mobil. Webový dashboard (aplikace na plochu telefonu) má čtyři záložky: **Stav** (stupeň, oblasti, přehled ukazatelů, co se děje), **Plán** (mapa Evropy s trasami a útočišti, trasy do offline map), **Signály** (vodočty, radiace, plyn, internet, kosmické počasí, zemětřesení, zdroje) a **Příprava** (platnost dokladů, úkoly před cestou, seznamy na 72 hodin).
+Osobní systém včasného varování před válkou, rozsáhlým blackoutem a katastrofami. Každých 10 minut projde oficiální zdroje i zprávy a ohodnotí situaci stupněm 0–3 pro domov, práci, Evropu a zvolené útočiště. Když se něco zhorší, pošle upozornění na mobil. Webový dashboard (aplikace na plochu telefonu) má pět záložek: **Stav** (stupeň, oblasti, přehled ukazatelů, co se děje), **Evropa** (mapa Evropy a okolí: barva podle cestovních varování, bulletinů EASA a stupňů hlídače, čísla = zprávy o dronech, útocích a sabotážích, vzdušném prostoru a blackoutu za 72 h; přiblížení prsty a detail země), **Plán** (mapa Evropy s trasami a útočišti, trasy do offline map), **Signály** (vodočty, radiace, plyn, internet, kosmické počasí, zemětřesení, zdroje) a **Příprava** (platnost dokladů, úkoly před cestou, seznamy na 72 hodin).
 
 | Stupeň | Význam | Typický spouštěč |
 |---|---|---|
@@ -94,6 +94,7 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 - **`internet`**: výpadky internetu celých zemí (IODA). Kritický pokles ve dvou měřeních → 🟠, v jednom → 🟡, samotné teleskopy se ignorují.
 - **`gdelt.dotazy`**: témata, u kterých se hlídá prudký nárůst zpráv ve světě (GDELT, 65 jazyků). Dotaz v angličtině, `pomer` = kolikrát víc než běžný den. Každý běh se ptá na jedno téma. Ve výchozím stavu vypnuto: z GitHub Actions GDELT dotazy odmítá (HTTP 429), na vlastním serveru zapni `enabled: true`.
 - **`nukib`, `psp`, `easa`**: úřední signály – varování NÚKIB před útoky, nové sněmovní tisky o stavu ohrožení státu nebo mobilizaci (první běh si zapamatuje výchozí stav a staré tisky nehlásí) a bulletiny EASA o konfliktních zónách v Evropě.
+- **`mapa`**: zpravodajské kanály pro mapu Evropy (`feeds`, u národních kanálů `zeme` = kam patří zpráva bez názvu země). Země se poznávají podle slovníku `zeme.json` (názvy, přídavná jména a města v cs/de/en/es/pt). Mapa sama upozornění neposílá. Od `zluta_od_zminek` zmínek za `okno_hodin` se země obarví 🟡.
 - **`zemetreseni`**: otřesy v okolí domova (EMSC). Výchozí výřez je Chebsko a Vogtland, nejaktivnější seismická oblast Česka.
 - **`notify.repeat_level3_minutes`**: jak často opakovat upozornění, dokud trvá 🔴 (0 = vypnuto).
 - **`notify.min_level`**: od jakého stupně posílat upozornění (výchozí 1).

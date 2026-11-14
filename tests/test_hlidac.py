@@ -38,13 +38,13 @@ GDACS = b"""<?xml version="1.0" encoding="utf-8"?>
 METEO_CZ = b"""<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.2">
 <entry><cap:areaDesc>Hlavn\xc3\xad m\xc4\x9bsto Praha</cap:areaDesc><cap:event>Extreme Impact of Flooding</cap:event>
-<cap:severity>Extreme</cap:severity><cap:onset>2026-11-12T02:00:00+00:00</cap:onset><cap:expires>2026-11-13T08:59:59+00:00</cap:expires>
+<cap:severity>Extreme</cap:severity><cap:onset>2026-11-12T02:00:00+00:00</cap:onset><cap:expires>2099-11-13T08:59:59+00:00</cap:expires>
 <cap:message_type>Alert</cap:message_type><cap:identifier>ID1</cap:identifier></entry>
 <entry><cap:areaDesc>Hlavn\xc3\xad m\xc4\x9bsto Praha</cap:areaDesc><cap:event>Extreme Impact of Flooding</cap:event>
-<cap:severity>Extreme</cap:severity><cap:expires>2026-11-13T08:59:59+00:00</cap:expires>
+<cap:severity>Extreme</cap:severity><cap:expires>2099-11-13T08:59:59+00:00</cap:expires>
 <cap:message_type>Alert</cap:message_type><cap:identifier>ID1</cap:identifier></entry>
 <entry><cap:areaDesc>Kraj Vyso\xc4\x8dina (Telc)</cap:areaDesc><cap:event>Extreme Impact of Snow</cap:event>
-<cap:severity>Extreme</cap:severity><cap:expires>2026-11-13T08:59:59+00:00</cap:expires><cap:message_type>Alert</cap:message_type><cap:identifier>ID2</cap:identifier></entry>
+<cap:severity>Extreme</cap:severity><cap:expires>2099-11-13T08:59:59+00:00</cap:expires><cap:message_type>Alert</cap:message_type><cap:identifier>ID2</cap:identifier></entry>
 <entry><cap:areaDesc>Hlavn\xc3\xad m\xc4\x9bsto Praha</cap:areaDesc><cap:event>Severe Impact of Wind</cap:event>
 <cap:severity>Severe</cap:severity><cap:expires>2026-11-01T08:59:59+00:00</cap:expires><cap:message_type>Alert</cap:message_type><cap:identifier>OLD</cap:identifier></entry>
 </feed>"""
@@ -325,7 +325,7 @@ class TestSources(unittest.TestCase):
         self.assertEqual((ev[0]["region"], ev[0]["level"]), ("CZ", 2))
 
     def test_aa(self):
-        ev, _ = hlidac.src_auswaertiges_amt(CFG, FakeNet({"auswaertiges": AA}))
+        ev, _, _ = hlidac.src_auswaertiges_amt(CFG, FakeNet({"auswaertiges": AA}))
         got = sorted((e["region"], e["level"]) for e in ev)
         self.assertEqual(got, [("CZ", 3), ("EU", 1)])
 
@@ -789,9 +789,10 @@ class TestSignals(unittest.TestCase):
     def test_easa(self):
         net = FakeNet({"easa": easa_rss(["Airspace of Iran", "Airspace of Poland and the Baltic States",
                                          "Airspace of Germany", "Airspace of Belarus"])})
-        ev, info = hlidac.src_easa(CFG, net)
+        ev, info, extra = hlidac.src_easa(CFG, net)
+        self.assertEqual(len(extra["czib"]), 4)
         self.assertEqual(sorted((e["region"], e["level"]) for e in ev), [("DE", 3), ("EU", 1), ("EU", 2)])
-        ev, info = hlidac.src_easa(CFG, FakeNet({"easa": easa_rss(["Airspace of Moldova"], days_ago=400)}))
+        ev, info, extra = hlidac.src_easa(CFG, FakeNet({"easa": easa_rss(["Airspace of Moldova"], days_ago=400)}))
         self.assertEqual(ev, [])                                     # starý (stažený) bulletin se ignoruje
 
     def test_emsc(self):
@@ -932,6 +933,55 @@ class TestGasImports(unittest.TestCase):
         self.assertEqual(len(net.calls), n)                                # do 30 min se znovu nestahuje
         self.assertEqual(hlidac._gwh_day("10", "MWh/h"), 0.24)
         self.assertIsNone(hlidac._gwh_day("10", "Nm3/h"))
+
+
+class TestEuropeMap(unittest.TestCase):
+    def test_countries_and_categories(self):
+        self.assertEqual(sorted(hlidac.countries_in("Ruský dron narušil polský vzdušný prostor")), ["PL", "RU"])
+        self.assertEqual(hlidac.countries_in("Drohnen über dem Flughafen München gesichtet"), ["DE"])
+        self.assertEqual(hlidac.countries_in("Řízení dopravy, odeslal zprávu, Ostrov nad Ohří"), [])
+        self.assertEqual(hlidac.map_categories("Ruský dron narušil polský vzdušný prostor"), ["drony", "vzduch"])
+        self.assertEqual(hlidac.map_categories("Drohnen über dem Flughafen München gesichtet"), ["drony"])
+        self.assertEqual(hlidac.map_categories("Bundeswehr kauft neue Drohnen für Milliarden"), [])     # nákup, ne incident
+        self.assertEqual(hlidac.map_categories("Stromausfall in Berlin nach Brandanschlag"), ["utoky", "blackout"])
+        self.assertEqual(hlidac.map_categories("Preisexplosion bei Butter"), [])
+        self.assertEqual(hlidac.map_categories("Tenisová raketa roku"), [])
+
+    def test_source_and_map(self):
+        import email.utils
+        now = datetime.now(timezone.utc)
+        ago = lambda h: email.utils.format_datetime(now - timedelta(hours=h))
+        feed = rss([("Danish airports closed after drone sightings near Copenhagen", ago(3)),
+                    ("Drones spotted over Copenhagen airport again", ago(5)),
+                    ("Russian missile strike on Kyiv kills five", ago(8)),
+                    ("Drone sighting near Aalborg military base", ago(10)),
+                    ("EU ministers from Poland, Germany, France, Italy discuss drones over airports", ago(0)),
+                    ("Old drone attack on Kyiv", ago(100))])
+        local = rss([("Drohnen über Flughafen München gesichtet", ago(2))])
+        cfg = {**CFG, "mapa": {**CFG["mapa"], "feeds": [{"id": "a", "name": "Test", "url": "https://feed.test/a"},
+                                                       {"id": "b", "name": "Lokál", "url": "https://feed.test/b", "zeme": "DE"},
+                                                       {"id": "c", "name": "Mrtvý", "url": "https://feed.test/dead"}]}}
+        net = FakeNet({"feed.test/a": feed, "feed.test/b": local})
+        ev, info, extra = hlidac.src_mapa(cfg, net)
+        self.assertEqual(ev, [])
+        z = extra["zeme"]
+        self.assertEqual(z["DK"]["kat"], {"drony": 3, "vzduch": 1})
+        self.assertEqual(z["UA"]["kat"], {"utoky": 1})                   # stará zpráva mimo 72 h se nepočítá
+        self.assertEqual(z["DE"]["kat"], {"drony": 1})                   # souhrn o 4 zemích se nepřiřadí nikam
+        self.assertNotIn("IT", z)
+        self.assertIn("2/3 kanálů", info)
+        extras = {"mapa": extra,
+                  "aa": {"zeme": {"RU": {"name": "Russland", "warning": True}, "MD": {"name": "Moldau", "partialWarning": True},
+                                  "US": {"warning": True}}},
+                  "easa": {"czib": [{"title": "Airspace of Belarus", "url": "u", "time": ""}]}}
+        regions = [{"code": "CZ", "name": "Česko", "level": 1, "events": [{"title": "Sněžení"}]},
+                   {"code": "EU", "name": "Evropa", "level": 2, "events": []}]
+        m = hlidac.europe_map(cfg, extras, regions)["zeme"]
+        self.assertEqual({k: v["level"] for k, v in m.items() if v["level"]},
+                         {"RU": 3, "MD": 2, "BY": 2, "CZ": 1, "DK": 1})      # DK: 4 zmínky ≥ 3
+        self.assertNotIn("US", m)
+        self.assertEqual(m["UA"]["level"], 0)                               # jedna zmínka barvu nemění
+        self.assertIn("Sněžení", m["CZ"]["duvody"][0])
 
 
 if __name__ == "__main__":

@@ -1,0 +1,1058 @@
+{
+"IM": {
+"nazev": "Ostrov Man",
+"vzory": [
+"ilha\\ de\\ man",
+"isla\\ de\\ man",
+"insel\\ man"
+]
+},
+"GB": {
+"nazev": "Spojené království",
+"vzory": [
+"vereinigtes\\ konigreich",
+"spojene\\ kralovstvi",
+"grossbritannien",
+"united\\ kingdom",
+"great\\ britain",
+"reino\\ unido",
+"reino unido",
+"birmingham",
+"manchester",
+"schottland",
+"edinburgh",
+"liverpool",
+"britisch",
+"englisch",
+"scotland",
+"anglick",
+"britain",
+"british",
+"england",
+"glasgow",
+"skotsko",
+"anglie",
+"britan",
+"britsk",
+"london",
+"londyn",
+"skotsk"
+]
+},
+"UA": {
+"nazev": "Ukrajina",
+"vzory": [
+"odes(?:a|e|y|u|ou)\\b",
+"saporisch",
+"\\bkrim\\b",
+"\\bsumy\\b",
+"mykolaiv",
+"ukrajina",
+"zhytomyr",
+"charkiw",
+"charkov",
+"cherson",
+"donetsk",
+"kharkiv",
+"kherson",
+"lemberg",
+"lugansk",
+"mykolaj",
+"ucrania",
+"ukraine",
+"ukrajin",
+"zaporiz",
+"zaporoz",
+"zytomyr",
+"crimea",
+"dnipro",
+"donbas",
+"donezk",
+"luhans",
+"odessa",
+"poltav",
+"ucrani",
+"ukrain",
+"donec",
+"kyjev",
+"kiev",
+"kiew",
+"krym",
+"kyiv",
+"lviv",
+"lvov"
+]
+},
+"TR": {
+"nazev": "Turecko",
+"vzory": [
+"istanbul",
+"turkisch",
+"turecko",
+"turkish",
+"turkiye",
+"turquia",
+"tureck",
+"turkei",
+"turkey",
+"ankar",
+"izmir",
+"turci"
+]
+},
+"TN": {
+"nazev": "Tunisko",
+"vzory": [
+"tunesien",
+"tunisia",
+"tunisko",
+"tunez",
+"tunis"
+]
+},
+"SY": {
+"nazev": "Sýrie",
+"vzory": [
+"republica\\ arabe\\ siria",
+"syrian\\ arab\\ republic",
+"damascus",
+"damaskus",
+"aleppo",
+"damask",
+"siria",
+"syrie",
+"syri"
+]
+},
+"CH": {
+"nazev": "Švýcarsko",
+"vzory": [
+"switzerland",
+"schweizer",
+"svycarsko",
+"\\bbern\\b",
+"basilej",
+"schweiz",
+"zuerich",
+"curych",
+"geneva",
+"geneve",
+"svycar",
+"zurich",
+"basel",
+"suica",
+"suiza",
+"swiss",
+"zenev",
+"genf"
+]
+},
+"SE": {
+"nazev": "Švédsko",
+"vzory": [
+"gothenburg",
+"schwedisch",
+"stockholm",
+"goteborg",
+"schweden",
+"gotebor",
+"gotland",
+"svedsko",
+"swedish",
+"suecia",
+"svedov",
+"svedsk",
+"sweden",
+"malmo"
+]
+},
+"ES": {
+"nazev": "Španělsko",
+"vzory": [
+"spanelsko",
+"barcelon",
+"spanisch",
+"espanha",
+"espanol",
+"spanien",
+"spanish",
+"valenci",
+"bilbao",
+"espana",
+"madrid",
+"sevill",
+"spanel",
+"malag",
+"spain"
+]
+},
+"SK": {
+"nazev": "Slovensko",
+"vzory": [
+"eslovaquia",
+"bratislav",
+"slovensko",
+"slovakia",
+"slovensk",
+"slowakei",
+"slovak",
+"slowak",
+"kosic"
+]
+},
+"SI": {
+"nazev": "Slovinsko",
+"vzory": [
+"slowenisch",
+"eslovenia",
+"ljubljana",
+"slovenian",
+"slovinsko",
+"slowenien",
+"slovenia",
+"slovinsk",
+"laibach",
+"lublan"
+]
+},
+"RS": {
+"nazev": "Srbsko",
+"vzory": [
+"belehrad",
+"belgrade",
+"serbisch",
+"belgrad",
+"beograd",
+"serbian",
+"serbien",
+"serbia",
+"servia",
+"srbsko",
+"srbov",
+"srbsk"
+]
+},
+"SA": {
+"nazev": "Saúdská Arábie",
+"vzory": [
+"arabia\\ saudita",
+"saudska\\ arabie",
+"saudi\\-arabien",
+"saudi\\ arabia",
+"riyadh",
+"saudsk",
+"rijad",
+"saudi"
+]
+},
+"RU": {
+"nazev": "Rusko",
+"vzory": [
+"russische\\ foderation",
+"kaliningrad",
+"konigsberg",
+"petersburg",
+"bjelgorod",
+"petrohrad",
+"woronesch",
+"belgorod",
+"murmansk",
+"russisch",
+"russland",
+"brjansk",
+"bryansk",
+"russian",
+"voronez",
+"moscow",
+"moskau",
+"rostov",
+"russia",
+"kreml",
+"kursk",
+"moskv",
+"pskov",
+"rusia",
+"rusko",
+"rusov",
+"rusum",
+"rusk"
+]
+},
+"RO": {
+"nazev": "Rumunsko",
+"vzory": [
+"bucharest",
+"bucuresti",
+"constanta",
+"konstanca",
+"konstanza",
+"rumanisch",
+"bukarest",
+"bukurest",
+"romanian",
+"rumanien",
+"rumunsko",
+"romania",
+"romenia",
+"rumania",
+"galati",
+"rumun"
+]
+},
+"PT": {
+"nazev": "Portugalsko",
+"vzory": [
+"portugalsko",
+"\\bporto\\b",
+"portugies",
+"portugues",
+"lissabon",
+"portugal",
+"lisabon",
+"lisboa",
+"lisbon"
+]
+},
+"PL": {
+"nazev": "Polsko",
+"vzory": [
+"vratislav",
+"polnisch",
+"warschau",
+"breslau",
+"polonia",
+"rzeszow",
+"warszaw",
+"wroclaw",
+"danzig",
+"gdansk",
+"krakau",
+"krakov",
+"krakow",
+"lublin",
+"poland",
+"polish",
+"polsko",
+"poznan",
+"varsav",
+"warsaw",
+"polen",
+"polsk",
+"lodz"
+]
+},
+"NO": {
+"nazev": "Norsko",
+"vzory": [
+"norwegisch",
+"norwegian",
+"stavanger",
+"trondheim",
+"norwegen",
+"noruega",
+"norsko",
+"norway",
+"tromso",
+"norov",
+"norsk",
+"oslo"
+]
+},
+"NL": {
+"nazev": "Nizozemsko",
+"vzory": [
+"the\\ netherlands",
+"paises\\ baixos",
+"paises\\ bajos",
+"paises bajos",
+"hollandisch",
+"netherlands",
+"niederlande",
+"niederland",
+"nizozemsko",
+"amsterdam",
+"eindhoven",
+"rotterdam",
+"holandan",
+"holandsk",
+"schiphol",
+"holanda",
+"nizozem",
+"dutch",
+"hague",
+"haag"
+]
+},
+"MA": {
+"nazev": "Maroko",
+"vzory": [
+"casablanca",
+"marruecos",
+"marrocos",
+"moroccan",
+"marokko",
+"morocco",
+"maroko",
+"marok"
+]
+},
+"ME": {
+"nazev": "Černá Hora",
+"vzory": [
+"cerna\\ hora",
+"cerna hora",
+"cerne hore",
+"montenegro",
+"montenegr",
+"cernohor",
+"podgoric"
+]
+},
+"MD": {
+"nazev": "Moldavsko",
+"vzory": [
+"republik moldau",
+"transnistr",
+"kischinau",
+"moldavsko",
+"moldawien",
+"podnester",
+"pridnestr",
+"chisinau",
+"moldavia",
+"kisinev",
+"moldav",
+"moldov"
+]
+},
+"MT": {
+"nazev": "Malta",
+"vzory": [
+"maltese",
+"maltsk",
+"malta"
+]
+},
+"MK": {
+"nazev": "Severní Makedonie",
+"vzory": [
+"the\\ republic\\ of\\ north\\ macedonia",
+"macedonia\\ del\\ norte",
+"macedonia\\ do\\ norte",
+"severni\\ makedonie",
+"nordmazedonien",
+"mazedonien",
+"macedoni",
+"makedon",
+"skopj"
+]
+},
+"LU": {
+"nazev": "Lucembursko",
+"vzory": [
+"lucembursko",
+"luxembourg",
+"luxemburgo",
+"luxemburg",
+"lucembur"
+]
+},
+"LT": {
+"nazev": "Litva",
+"vzory": [
+"litauisch",
+"lithuania",
+"lituania",
+"klaiped",
+"litauen",
+"lithuan",
+"kaunas",
+"litev",
+"litva",
+"vilni",
+"wilna",
+"litv"
+]
+},
+"LI": {
+"nazev": "Lichtenštejnsko",
+"vzory": [
+"lichtenstejnsko",
+"liechtenstein"
+]
+},
+"LY": {
+"nazev": "Libye",
+"vzory": [
+"benghazi",
+"libyen",
+"libia",
+"libya",
+"libye",
+"liby"
+]
+},
+"LB": {
+"nazev": "Libanon",
+"vzory": [
+"hezbollah",
+"hisbollah",
+"lebanese",
+"hizball",
+"lebanon",
+"libanon",
+"beirut",
+"bejrut",
+"libano",
+"liban"
+]
+},
+"LV": {
+"nazev": "Lotyšsko",
+"vzory": [
+"lettisch",
+"lettland",
+"lotyssko",
+"latvian",
+"letonia",
+"latvia",
+"rize\\b",
+"lotys",
+"riga"
+]
+},
+"XK": {
+"nazev": "Kosovo",
+"vzory": [
+"prishtin",
+"pristin",
+"kosovo",
+"kosov"
+]
+},
+"KZ": {
+"nazev": "Kazachstán",
+"vzory": [
+"cazaquistao",
+"kasachstan",
+"kazachstan",
+"kazajistan",
+"kazakhstan",
+"almaty",
+"astana",
+"kasach",
+"kazach",
+"kazakh"
+]
+},
+"JO": {
+"nazev": "Jordánsko",
+"vzory": [
+"jordanien",
+"jordansko",
+"jordania",
+"jordansk",
+"amman"
+]
+},
+"IT": {
+"nazev": "Itálie",
+"vzory": [
+"italien",
+"mailand",
+"venedig",
+"venezia",
+"benatk",
+"ital\\b",
+"italia",
+"italie",
+"italsk",
+"milano",
+"naples",
+"napoli",
+"neapol",
+"rome\\b",
+"torino",
+"venice",
+"itali",
+"italy",
+"rim\\b",
+"rimsk",
+"turin"
+]
+},
+"IL": {
+"nazev": "Izrael",
+"vzory": [
+"jerusalem",
+"jeruzalem",
+"tel aviv",
+"israel",
+"izrael",
+"haif"
+]
+},
+"PS": {
+"nazev": "Palestinská autonomie",
+"vzory": [
+"territorios\\ palestinos",
+"palestinska\\ autonomie",
+"state\\ of\\ palestine",
+"staat\\ palastina",
+"westjordanland",
+"gazastreifen",
+"zapadni breh",
+"pasmo gazy",
+"palestina",
+"palestine",
+"west bank",
+"palestin",
+"gaze\\b",
+"gaza",
+"gazy"
+]
+},
+"IE": {
+"nazev": "Irsko",
+"vzory": [
+"\\bcork\\b",
+"ireland",
+"irlanda",
+"dublin",
+"irisch",
+"irland",
+"irish",
+"irsko",
+"irsk"
+]
+},
+"IQ": {
+"nazev": "Irák",
+"vzory": [
+"baghdad",
+"bagdad",
+"iraque",
+"irak",
+"iraq"
+]
+},
+"IR": {
+"nazev": "Írán",
+"vzory": [
+"republica\\ islamica\\ de\\ iran",
+"islamic\\ republic\\ of\\ iran",
+"teheran",
+"tehran",
+"iran",
+"irao"
+]
+},
+"IS": {
+"nazev": "Island",
+"vzory": [
+"islandisch",
+"icelandic",
+"reykjavik",
+"islandem",
+"islandia",
+"islandsk",
+"iceland",
+"islandu"
+]
+},
+"HU": {
+"nazev": "Maďarsko",
+"vzory": [
+"budapesti",
+"ungarisch",
+"budapest",
+"madarsko",
+"hungary",
+"hungria",
+"hungar",
+"ungarn",
+"madar"
+]
+},
+"GR": {
+"nazev": "Řecko",
+"vzory": [
+"reck(?:o|u|em|y|e|a|ych|ou)\\b",
+"griechenland",
+"thessalonik",
+"griechisch",
+"grecia",
+"greece",
+"athen",
+"greek",
+"recko",
+"solun",
+"aten"
+]
+},
+"DE": {
+"nazev": "Německo",
+"vzory": [
+"bundesrepublik",
+"deutschland",
+"bundeswehr",
+"dusseldorf",
+"frankfurt",
+"kolin nad",
+"norimberk",
+"nuremberg",
+"stuttgart",
+"\\bkiel\\b",
+"alemanha",
+"alemania",
+"hannover",
+"nurnberg",
+"ramstein",
+"cologne",
+"deutsch",
+"drazdan",
+"dresden",
+"germany",
+"hamburg",
+"hamburk",
+"leipzig",
+"mnichov",
+"munchen",
+"nemecko",
+"rostock",
+"berlin",
+"bremen",
+"german",
+"munich",
+"nemeck",
+"lipsk",
+"nemci",
+"nemec",
+"koln"
+]
+},
+"GE": {
+"nazev": "Gruzie",
+"vzory": [
+"georgian",
+"georgien",
+"gruzie",
+"gruzin",
+"tbilis",
+"tiflis",
+"gruzi"
+]
+},
+"FR": {
+"nazev": "Francie",
+"vzory": [
+"franzosisch",
+"frankreich",
+"strasbourg",
+"strassburg",
+"strasburk",
+"bordeaux",
+"francouz",
+"marseill",
+"francia",
+"francie",
+"francii",
+"toulous",
+"franca",
+"france",
+"french",
+"marsei",
+"lille",
+"paris",
+"pariz",
+"lyon"
+]
+},
+"AX": {
+"nazev": "Ålandy",
+"vzory": [
+"aland\\ islands",
+"ilhas\\ aland",
+"islas\\ aland",
+"alandy",
+"aland"
+]
+},
+"FI": {
+"nazev": "Finsko",
+"vzory": [
+"finlandia",
+"finnisch",
+"finnland",
+"finland",
+"finnish",
+"helsink",
+"tampere",
+"finsko",
+"finov",
+"finsk",
+"turku"
+]
+},
+"EE": {
+"nazev": "Estonsko",
+"vzory": [
+"estnisch",
+"estonsko",
+"estland",
+"estonia",
+"tallin",
+"eston",
+"narva",
+"tartu"
+]
+},
+"EG": {
+"nazev": "Egypt",
+"vzory": [
+"agypten",
+"egipto",
+"cairo",
+"egito",
+"egypt",
+"kahir",
+"kairo"
+]
+},
+"GL": {
+"nazev": "Grónsko",
+"vzory": [
+"groenlandia",
+"gronelandia",
+"greenland",
+"gronland",
+"gronsko"
+]
+},
+"FO": {
+"nazev": "Faerské ostrovy",
+"vzory": [
+"faroe\\ islands",
+"ilhas\\ faroe",
+"islas\\ feroe",
+"faersk",
+"faroer",
+"farer",
+"faroe"
+]
+},
+"DK": {
+"nazev": "Dánsko",
+"vzory": [
+"copenhagen",
+"dinamarca",
+"kobenhavn",
+"bornholm",
+"danemark",
+"kopenhag",
+"aalborg",
+"billund",
+"danisch",
+"denmark",
+"aarhus",
+"danish",
+"dansko",
+"dansk",
+"kodan"
+]
+},
+"CZ": {
+"nazev": "Česká republika",
+"vzory": [
+"tschechische\\ republik",
+"ceska\\ republika",
+"republica\\ checa",
+"czech\\ republic",
+"tschechien",
+"chequia",
+"czechia",
+"dukovan",
+"temelin",
+"tschech",
+"karlov",
+"ostrav",
+"pilsen",
+"prag\\b",
+"prague",
+"cechy",
+"cesko",
+"czech",
+"plzen",
+"praha",
+"prahy",
+"praze",
+"brno",
+"cesk"
+]
+},
+"CY": {
+"nazev": "Kypr",
+"vzory": [
+"cypriot",
+"nicosia",
+"chipre",
+"cyprus",
+"nikosi",
+"zypern",
+"kypr"
+]
+},
+"HR": {
+"nazev": "Chorvatsko",
+"vzory": [
+"chorvatsko",
+"dubrovnik",
+"kroatisch",
+"croatian",
+"kroatien",
+"chorvat",
+"croacia",
+"croatia",
+"zagreb",
+"zahreb"
+]
+},
+"BG": {
+"nazev": "Bulharsko",
+"vzory": [
+"bulgarien",
+"bulharsko",
+"bulgaria",
+"bulgari",
+"bulhar",
+"burgas",
+"sofia",
+"sofie",
+"varna"
+]
+},
+"BA": {
+"nazev": "Bosna a Hercegovina",
+"vzory": [
+"bosnien\\ und\\ herzegowina",
+"bosnia\\ and\\ herzegovina",
+"bosnia\\ y\\ herzegovina",
+"bosna\\ a\\ hercegovina",
+"bosnia\\-herzegovina",
+"hercegov",
+"herzegov",
+"sarajev",
+"bosn"
+]
+},
+"BE": {
+"nazev": "Belgie",
+"vzory": [
+"antwerpen",
+"bruxelles",
+"charleroi",
+"\\bgent\\b",
+"antverp",
+"antwerp",
+"belgica",
+"belgick",
+"belgien",
+"belgium",
+"brussel",
+"luttich",
+"belgie",
+"brusel",
+"lutych",
+"belgi",
+"ghent",
+"liege"
+]
+},
+"BY": {
+"nazev": "Bělorusko",
+"vzory": [
+"weissrussland",
+"bielorrussia",
+"bielorrusia",
+"belorusko",
+"belarus",
+"beloru",
+"grodno",
+"hrodn",
+"minsk"
+]
+},
+"AZ": {
+"nazev": "Ázerbájdžán",
+"vzory": [
+"aserbaidschan",
+"aserbaidsch",
+"azerbajdzan",
+"azerbaijan",
+"azerbaijao",
+"azerbaiyan",
+"baku\\b",
+"azerb"
+]
+},
+"AT": {
+"nazev": "Rakousko",
+"vzory": [
+"osterreich",
+"innsbruck",
+"austrian",
+"rakousko",
+"salcburk",
+"salzburg",
+"austria",
+"rakous",
+"vienna",
+"viden",
+"graz",
+"linz",
+"wien"
+]
+},
+"AM": {
+"nazev": "Arménie",
+"vzory": [
+"armenien",
+"armenia",
+"armenie",
+"armensk",
+"jerevan",
+"yerevan",
+"armeni",
+"eriwan"
+]
+},
+"AD": {
+"nazev": "Andorra",
+"vzory": [
+"andorra"
+]
+},
+"DZ": {
+"nazev": "Alžírsko",
+"vzory": [
+"algerian",
+"algerien",
+"alzirsko",
+"algeria",
+"argelia",
+"alzir"
+]
+},
+"AL": {
+"nazev": "Albánie",
+"vzory": [
+"albanien",
+"albania",
+"albanie",
+"albansk",
+"albani",
+"tirana",
+"tirane"
+]
+}
+}

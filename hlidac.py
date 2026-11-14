@@ -356,8 +356,12 @@ def src_meteoalarm(cfg, fetch):
 def src_auswaertiges_amt(cfg, fetch):
     resp = json.loads(fetch("https://www.auswaertiges-amt.de/opendata/travelwarning")).get("response", {})
     countries = cfg["auswaertiges_amt"]["countries"]
-    events = []
+    events, flagged = [], {}
     for v in resp.values():
+        if isinstance(v, dict) and v.get("countryCode"):
+            f = {k: bool(v.get(k)) for k in ("warning", "partialWarning", "situationWarning", "situationPartWarning")}
+            if any(f.values()):            # pro mapu Evropy: všechny země s varováním
+                flagged[v["countryCode"]] = {"name": v.get("countryName", ""), **f}
         if not isinstance(v, dict) or v.get("countryCode") not in countries:
             continue
         region = countries[v["countryCode"]]
@@ -374,7 +378,7 @@ def src_auswaertiges_amt(cfg, fetch):
         events.append(make_event("Auswärtiges Amt", region, lvl, f"{v.get('countryName', v['countryCode'])}: {what}",
                                  url="https://www.auswaertiges-amt.de/de/reiseundsicherheit",
                                  eid=f"aa:{v['countryCode']}:{flags}"))
-    return events, f"sledováno {len(countries)} zemí"
+    return events, f"sledováno {len(countries)} zemí, s varováním celkem {len(flagged)}", {"zeme": flagged}
 
 
 def src_us_state(cfg, fetch):
@@ -1125,10 +1129,11 @@ def src_easa(cfg, fetch):
     items = parse_feed(fetch(c.get("url", EASA_FEED)))
     watch = [(re.compile(w["match"]), w.get("region"), w["level"]) for w in c.get("sledovat", EASA_WATCH)]
     max_age = timedelta(days=c.get("max_age_days", 120))   # kanál obsahuje i stažené bulletiny
-    events = []
+    events, recent = [], []
     for title, link, when in items:
         if when and utcnow() - when > max_age:
             continue
+        recent.append({"title": title, "url": link, "time": iso(when) if when else ""})
         t = norm(title)
         for rx, region, lvl in watch:
             if rx.search(t):
@@ -1137,7 +1142,160 @@ def src_easa(cfg, fetch):
                                          url=link, eid=f"easa:{short_hash(link or title)}", when=when,
                                          detail="Bulletin o konfliktní zóně – riziko pro civilní letadla nad touto oblastí."))
                 break
-    return events, f"{len(items)} aktivních bulletinů, v Evropě: {len(events)}"
+    return events, f"{len(items)} aktivních bulletinů, v Evropě: {len(events)}", {"czib": recent}
+
+
+# ───────────────────────── mapa Evropy: incidenty ze zpráv po zemích ─────────────────────────
+
+MAP_KAT = [   # (id, popis, vzor, kontext nutný k započtení, vyloučení) – na normalizovaný titulek
+    ("drony", "Drony",
+     r"\b(dron|drohn|drone|bezpilot|uav\b|shahed|geran)",
+     r"\b(nad\b|over\b|uber\b|sobre\b|spatren|spozor|zahled|sichtung|gesichtet|sighting|sighted|narus|violat|incursion|"
+     r"eindring|letist|airport|flughafen|aeropuert|aeroport|sestrel|shot down|abgeschossen|derrib|abatid|utok|zautoc|"
+     r"attack|angriff|ataque|ataca|uzavr|zavr|closed|gesperrt|cerrad|fechad|vojensk|militar|zakladn|kaserne|base\b|"
+     r"stihac|jets?\b|alarm|poplach|trosk|trummer|wreck|zasah|einschlag|strike)",
+     r"\b(show|svetel|lichtshow|vanoc|weihnacht|zasilk|rozvoz|lieferung|paket|startup|nakup|kauf|buy|purchase|order|"
+     r"zakazk|contract|vertrag|vyrob|produc|herstell|vyvoj|entwickl|tovarn|fabrik|factory|industr|prumysl|zemedel|"
+     r"landwirt|farm|film|hollywood|dodav|liefer|deliver|zbrojovk|investic|invest)"),
+    ("vzduch", "Vzdušný prostor a letiště",
+     r"vzdusn[a-z]* prostor|airspace|luftraum|espacio aereo|espaco aereo|letist[a-z]* (uzavr|zavr|zastav)|"
+     r"(uzavr|zavr)[a-z]* letist|airports? (closed|shut|suspend)|(closed|shut|suspend)[a-z]* (the )?airport|"
+     r"flughafen[a-z]* (gesperrt|geschlossen|dicht)|flugbetrieb[a-z]* (eingestellt|unterbrochen)|aeropuerto[a-z]* cerrad|"
+     r"scrambl|stihack[a-z]* (vzlet|odstart)|kampfjets? (aufgestiegen|gestartet)", None, None),
+    ("utoky", "Útoky, výbuchy a sabotáže",
+     r"\b(raket|missile|rakete|misil|missil|ostrel|beschuss|shelling|airstrike|air strike|leteck[a-z]* (utok|uder)|"
+     r"luftangriff|raketenangriff|drohnenangriff|bombard|sabotaz|sabotage|sabotaje|anschlag|brandanschlag|terroranschlag|"
+     r"bombenanschlag|sprengstoff|zhav|arson|explozi|explosion|exploz|terorist|terroris|terror attack|"
+     r"undersea cable|unterseekabel|podmorsk[a-z]* kabel|cables? (cut|damaged|severed)|kabel[a-z]* (poskoz|beschadig|durchtrennt|zerstort))",
+     None, r"\b(tenis|tennis|raketov[a-z]* start|spacex|nasa|vesmir|weltraum|space)"),
+    ("blackout", "Blackout a výpadky proudu",
+     r"\b(blackout|vypad(ek|ky|ku) (proudu|elektr)|bez proudu|bez elektriny|stromausfall|netzausfall|apagon|apagao|"
+     r"power (outage|cut)|grid (failure|collapse))", None, None),
+]
+MAP_LABEL = {k: lbl for k, lbl, *_ in MAP_KAT}
+_COUNTRY_RX = None
+
+
+def country_patterns() -> dict:
+    """Slovník zemí (zeme.json): kód → (název, regulární výraz na normalizovaný text)."""
+    global _COUNTRY_RX
+    if _COUNTRY_RX is None:
+        data = json.loads((Path(__file__).with_name("zeme.json")).read_text(encoding="utf-8"))
+        _COUNTRY_RX = {c: (v["nazev"], re.compile(r"\b(?:" + "|".join(v["vzory"]) + ")"))
+                       for c, v in data.items() if v.get("vzory")}
+    return _COUNTRY_RX
+
+
+def countries_in(text: str) -> list:
+    t = norm(text)
+    return [c for c, (_, rx) in country_patterns().items() if rx.search(t)]
+
+
+def map_categories(text: str) -> list:
+    t = norm(text)
+    out = []
+    for k, _, rx, ctx, excl in MAP_KAT:
+        if re.search(rx, t) and (not ctx or re.search(ctx, t)) and not (excl and re.search(excl, t)):
+            out.append(k)
+    return out
+
+
+def src_mapa(cfg, fetch):
+    """Kde se v Evropě podle zpráv něco děje: drony, útoky a sabotáže, vzdušný prostor, blackout (posledních 72 h).
+    Zemi poznává podle názvů, přídavných jmen a měst. Sám stupeň doma nezvedá – jen kreslí mapu."""
+    c = cfg["mapa"]
+    now = utcnow()
+    window = timedelta(hours=c.get("okno_hodin", 72))
+    news_feeds = {f["id"]: f for f in (cfg.get("news") or {}).get("feeds", [])}
+    feeds = []
+    for f in c["feeds"]:
+        f = {**news_feeds.get(f["id"], {}), **f}
+        if f.get("url"):
+            feeds.append(f)
+
+    def one(f):
+        return f, parse_feed(fetch(f["url"], timeout=20))
+
+    zeme, seen, ok, failed = {}, set(), 0, []
+    with cf.ThreadPoolExecutor(max_workers=8) as ex:
+        for fut in [ex.submit(one, f) for f in feeds]:
+            try:
+                f, items = fut.result()
+            except Exception:
+                failed.append("?")
+                continue
+            ok += 1
+            for title, link, when in items:
+                if when and now - when > window:
+                    continue
+                key = norm(title)
+                if key in seen:
+                    continue
+                cats = map_categories(title)
+                if not cats:
+                    continue
+                codes = countries_in(title) or ([f["zeme"]] if f.get("zeme") else [])
+                if not codes or len(codes) > c.get("max_zemi_na_zpravu", 3):   # souhrnné zprávy o půlce Evropy nic neříkají
+                    continue
+                seen.add(key)
+                for code in codes:
+                    z = zeme.setdefault(code, {"kat": {}, "zpravy": []})
+                    for k in cats:
+                        z["kat"][k] = z["kat"].get(k, 0) + 1
+                    z["zpravy"].append({"kat": cats, "title": title[:200], "url": link, "zdroj": f.get("name", f["id"]),
+                                        "time": iso(when) if when else ""})
+    if feeds and not ok:
+        raise RuntimeError("žádný zpravodajský kanál pro mapu neodpověděl")
+    for z in zeme.values():
+        z["zpravy"].sort(key=lambda x: x["time"], reverse=True)
+        z["zpravy"] = z["zpravy"][:c.get("max_zprav", 8)]
+    total = sum(sum(z["kat"].values()) for z in zeme.values())
+    info = f"{ok}/{len(feeds)} kanálů, {len(zeme)} zemí se zmínkou, {total} zmínek za {c.get('okno_hodin', 72)} h"
+    return [], info, {"zeme": zeme, "time": iso(now), "okno_hodin": c.get("okno_hodin", 72)}
+
+
+def europe_map(cfg, extras, regions) -> dict:
+    """Stav zemí na mapě Evropy: úřední varování (AA, EASA), stupně hlídače a zmínky ve zprávách."""
+    cp = country_patterns()
+    c = cfg.get("mapa") or {}
+    out = {}
+
+    def add(code, lvl, why):
+        if code not in cp:
+            return
+        z = out.setdefault(code, {"level": 0, "duvody": [], "kat": {}, "zpravy": []})
+        z["level"] = max(z["level"], lvl)
+        if why not in z["duvody"]:
+            z["duvody"].append(why)
+
+    for code, a in ((extras.get("aa") or {}).get("zeme") or {}).items():
+        if a.get("warning"):
+            add(code, 3, "Německé ministerstvo zahraničí varuje před cestami do celé země")
+        elif a.get("partialWarning"):
+            add(code, 2, "Německé ministerstvo zahraničí varuje před cestami do části země")
+        elif a.get("situationWarning") or a.get("situationPartWarning"):
+            add(code, 1, "Německé ministerstvo zahraničí upozorňuje na aktuální bezpečnostní situaci")
+    for b in (extras.get("easa") or {}).get("czib") or []:
+        for code in countries_in(b["title"]):
+            add(code, 2, f"EASA varuje letecké dopravce: {b['title']}")
+    for r in regions:
+        if r["code"] in cp and r["level"]:
+            add(r["code"], r["level"], f"Hlídač: stupeň {LEVELS[r['level']][0].capitalize()} – {r['events'][0]['title'] if r['events'] else r['name']}")
+    m = extras.get("mapa") or {}
+    yellow = c.get("zluta_od_zminek", 3)
+    for code, z in (m.get("zeme") or {}).items():
+        if code not in cp:
+            continue
+        o = out.setdefault(code, {"level": 0, "duvody": [], "kat": {}, "zpravy": []})
+        o["kat"], o["zpravy"] = z["kat"], z["zpravy"]
+        n = len(z["zpravy"])
+        if sum(z["kat"].values()) >= yellow and o["level"] < 1:
+            o["level"] = 1
+            o["duvody"].append(f"Ve zprávách za {m.get('okno_hodin', 72)} h víc zmínek: "
+                               + ", ".join(f"{MAP_LABEL[k].lower()} {v}" for k, v in z["kat"].items()))
+        o["n"] = n
+    return {"zeme": out, "kategorie": [{"id": k, "nazev": lbl} for k, lbl, *_ in MAP_KAT],
+            "time": m.get("time", ""), "okno_hodin": m.get("okno_hodin", 72)}
 
 
 EMSC = "https://www.seismicportal.eu/fdsnws/event/1/query"
@@ -1198,6 +1356,7 @@ SOURCES = {
     "gas":            ("Zásobníky plynu (AGSI)", src_gas, "gas"),
     "lng":            ("LNG terminály (ALSI)", src_lng, "lng"),
     "gasout":         ("Výpadky plynovodů a zásobníků (GIE)", src_gas_outages, "plyn_vypadky"),
+    "mapa":           ("Mapa Evropy – zprávy po zemích", src_mapa, "mapa"),
     "ioda":           ("Výpadky internetu (IODA)", src_ioda, "internet"),
     "gdelt":          ("Objem světových zpráv (GDELT)", src_gdelt, "gdelt"),
     "nukib":          ("NÚKIB – kybernetická varování", src_nukib, "nukib"),
@@ -1806,6 +1965,7 @@ def build_status(cfg, state, events, region_levels, overall, now):
         "radiation": extras.get("bfs") or {},
         "fuel": (extras.get("fuel") or {}).get("points", {}),
         "gas": extras.get("gas") or {},
+        "evropa": europe_map(cfg, extras, regions),
         "lng": extras.get("lng") or {},
         "gasout": extras.get("gasout") or {},
         "internet": extras.get("ioda") or {},
@@ -2012,6 +2172,18 @@ def demo_status(cfg):
         "ioda": {"time": iso(now), "zeme": [{"code": c, "name": n, "down": [], "level": 0}
                                              for c, n in (("CZ", "Česko"), ("DE", "Německo"), ("ES", "Španělsko"))]},
         "gdelt": {"dotazy": [{"id": "nato", "name": "Útok na NATO", "cur": 0.012, "base": 0.006, "ratio": 2.0, "time": iso(now)}]},
+        "aa": {"zeme": {k: {"name": k, **v} for k, v in {
+            "RU": {"warning": True}, "BY": {"warning": True}, "UA": {"warning": True}, "SY": {"warning": True},
+            "LB": {"warning": True}, "IR": {"warning": True}, "IQ": {"warning": True}, "LY": {"warning": True},
+            "MD": {"partialWarning": True}, "IL": {"partialWarning": True}, "TR": {"partialWarning": True},
+            "AZ": {"partialWarning": True}, "AM": {"partialWarning": True}, "GE": {"partialWarning": True}}.items()}},
+        "easa": {"czib": [{"title": "Airspace of the Russian Federation", "url": "https://www.easa.europa.eu/", "time": ""}]},
+        "mapa": {"time": iso(now), "okno_hodin": 72, "zeme": {k: {"kat": kat, "zpravy": [
+            {"kat": list(kat), "title": f"Ukázková zpráva ({k}): {', '.join(kat)}", "url": "https://example.org/",
+             "zdroj": "Ukázka", "time": iso(now - timedelta(hours=5))}]} for k, kat in {
+            "DK": {"drony": 4, "vzduch": 2}, "PL": {"drony": 2, "vzduch": 1}, "DE": {"drony": 1},
+            "UA": {"utoky": 9, "drony": 6, "blackout": 2}, "RU": {"drony": 3, "utoky": 2}, "LT": {"vzduch": 1},
+            "BE": {"drony": 2, "vzduch": 1}, "FR": {"utoky": 1}}.items()}},
         "noaa": {"now": 0, "max": 4, "day": "2026-11-14"},
         "emsc": {"days": 7, "min_mag": 2.0, "quakes": [
             {"zone": "Chebsko a Vogtland", "mag": 2.4, "time": iso(now - timedelta(days=2)), "place": "Czech Republic", "depth": 9}]},
@@ -2099,7 +2271,7 @@ def main():
                 ok = sum(1 for s in st["sources"] if s["ok"])
                 print(f"::notice title=Zdroje {ok}/{len(st['sources'])}::" + ", ".join(
                     f"{s['key']} {'OK' if s['ok'] else 'CHYBA'}" for s in st["sources"]), flush=True)
-                public = ("noaa", "gas", "lng", "gasout", "ioda", "gdelt", "nukib", "psp", "easa")   # info bez míst a tras
+                public = ("noaa", "gas", "lng", "gasout", "ioda", "gdelt", "nukib", "psp", "easa", "mapa", "aa")   # info bez míst a tras
                 print("::notice title=Signály::" + " · ".join(
                     f"{s['key']}: {s['info']}" for s in st["sources"] if s["key"] in public and s["ok"]), flush=True)
                 for s in st["sources"]:

@@ -855,5 +855,86 @@
         "provozovatele": "net4gas"
       }
     ]
+  },
+  "mapa": {
+    "enabled": true,
+    "okno_hodin": 72,
+    "zluta_od_zminek": 3,
+    "max_zemi_na_zpravu": 3,
+    "max_zprav": 8,
+    "feeds": [
+      {
+        "id": "guardian_eu",
+        "name": "The Guardian",
+        "url": "https://www.theguardian.com/world/europe-news/rss"
+      },
+      {
+        "id": "bbc_eu",
+        "name": "BBC Europe",
+        "url": "https://feeds.bbci.co.uk/news/world/europe/rss.xml"
+      },
+      {
+        "id": "dw_en",
+        "name": "DW",
+        "url": "https://rss.dw.com/xml/rss-en-all"
+      },
+      {
+        "id": "euronews",
+        "name": "Euronews",
+        "url": "https://www.euronews.com/rss"
+      },
+      {
+        "id": "politico_eu",
+        "name": "Politico Europe",
+        "url": "https://www.politico.eu/feed/"
+      },
+      {
+        "id": "notes_poland",
+        "name": "Notes from Poland",
+        "url": "https://notesfrompoland.com/feed/",
+        "zeme": "PL"
+      },
+      {
+        "id": "err",
+        "name": "ERR News",
+        "url": "https://news.err.ee/rss",
+        "zeme": "EE"
+      },
+      {
+        "id": "ct24",
+        "zeme": "CZ"
+      },
+      {
+        "id": "irozhlas",
+        "zeme": "CZ"
+      },
+      {
+        "id": "novinky",
+        "zeme": "CZ"
+      },
+      {
+        "id": "tagesschau",
+        "zeme": "DE"
+      },
+      {
+        "id": "mdr",
+        "zeme": "DE"
+      },
+      {
+        "id": "elpais",
+        "zeme": "ES"
+      },
+      {
+        "id": "rtp",
+        "zeme": "PT"
+      },
+      {
+        "id": "rte",
+        "zeme": "IE"
+      },
+      {
+        "id": "bbc"
+      }
+    ]
   }
 }
