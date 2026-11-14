@@ -1250,7 +1250,9 @@ def src_mapa(cfg, fetch):
         z["zpravy"].sort(key=lambda x: x["time"], reverse=True)
         z["zpravy"] = z["zpravy"][:c.get("max_zprav", 8)]
     total = sum(sum(z["kat"].values()) for z in zeme.values())
-    info = f"{ok}/{len(feeds)} kanálů, {len(zeme)} zemí se zmínkou, {total} zmínek za {c.get('okno_hodin', 72)} h"
+    top = sorted(zeme.items(), key=lambda kv: -sum(kv[1]["kat"].values()))[:6]
+    info = (f"{ok}/{len(feeds)} kanálů, {len(zeme)} zemí se zmínkou, {total} zmínek za {c.get('okno_hodin', 72)} h"
+            + (": " + ", ".join(f"{k} {sum(v['kat'].values())}" for k, v in top) if top else ""))
     return [], info, {"zeme": zeme, "time": iso(now), "okno_hodin": c.get("okno_hodin", 72)}
 
 
