@@ -1040,7 +1040,7 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       li.append(gauge(g.actual, g.forecast * 1.3, [{at: g.forecast}, {at: g.forecast * 0.85, level: 1}, {at: g.forecast * 0.65, level: 2}],
         {level: g.level, label: `${dec(g.actual / 1000)} GW`}),
         el("span", {class:"info", text: [`předpověď ${dec(g.forecast / 1000)} GW (${fmtNum(-g.dev)} %)`, g.operator,
-          g.stale ? "data se neaktualizují" : fmtTime(g.time)].join(", ")}));
+          g.stale ? "data se neaktualizují" : fmtTime(g.time), g.pozn].filter(Boolean).join(", ")}));
       return li;
     }));
     const gzInfo = [utGz.boe ? `BOE ${utGz.boe.n} položek` + ((utGz.boe.dny || []).length ? ` (${utGz.boe.dny.map(fmtDate).join(", ")})` : ", dnes ani včera nevyšel") : "",

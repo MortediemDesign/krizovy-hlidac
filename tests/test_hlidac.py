@@ -1138,7 +1138,7 @@ class TestRefugeSources(unittest.TestCase):
         self.assertEqual(ev, [])
         es = next(x for x in extra["site"] if x["code"] == "ES")
         self.assertEqual((es["level"], es["operator"], es["actual"]), (0, "REE", 27200))
-        self.assertIn("ES 27.2 GW", info)
+        self.assertIn("ES 27,2 GW", info)
         ie = next(x for x in extra["site"] if x["code"] == "IE")
         self.assertEqual(ie.get("pozn"), "předpověď se teprve sbírá")     # EirGrid dává předpověď jen dopředu
         # propad jen v posledním bodě = možná chyba dat, nic
@@ -1166,6 +1166,22 @@ class TestRefugeSources(unittest.TestCase):
         ev, info, extra = hlidac.src_grid_refuges(CFG, FakeNet(r), mem)
         self.assertEqual([(e["region"], e["level"]) for e in ev], [("IE", 1)])      # o 20–22 % pod předpovědí
         self.assertTrue(len(mem["eirgrid_fc"]["ROI"]) > 3)                           # nová předpověď se uložila
+
+    def test_grid_keeps_last_state_on_outage(self):
+        mem = {}
+        r = {**refuge_routes(), "apidatos.ree.es": ree_json([27000, 11000, 10500], [27200, 27150, 27250])}
+        ev, _, _ = hlidac.src_grid_refuges(CFG, FakeNet(r), mem)
+        self.assertEqual([e["region"] for e in ev], ["ES"])
+        r["apidatos.ree.es"] = urllib.error.HTTPError("u", 503, "Service Unavailable", {}, None)
+        ev, info, extra = hlidac.src_grid_refuges(CFG, FakeNet(r), mem)
+        self.assertEqual([e["region"] for e in ev], ["ES"])                  # blackout trvá, REE jen neodpovídá
+        es = next(x for x in extra["site"] if x["code"] == "ES")
+        self.assertIn("neodpovídá", es["pozn"])
+        self.assertIn("nefunguje: Španělsko", info)
+        mem["posledni"]["ES"]["cas"] = hlidac.iso(hlidac.utcnow() - timedelta(hours=2))
+        ev, _, extra = hlidac.src_grid_refuges(CFG, FakeNet(r), mem)
+        self.assertEqual(ev, [])
+        self.assertNotIn("ES", [x["code"] for x in extra["site"]])
 
     def test_grid_errors(self):
         r = {**refuge_routes(), "apidatos.ree.es": b'{"errors": [{"detail": "x"}]}'}

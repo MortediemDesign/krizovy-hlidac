@@ -1538,6 +1538,10 @@ def src_grid_refuges(cfg, fetch, mem):
                 raise RuntimeError(f"neznámý typ sítě {s['typ']}")
         except Exception as e:
             errors.append(f"{s.get('name', s['region'])}: {type(e).__name__}: {e}"[:160])
+            prev = mem.get("posledni", {}).get(s["region"])      # krátký výpadek provozovatele: drž poslední stav
+            if prev and now - (parse_date(prev["cas"]) or now) <= timedelta(minutes=c.get("drzet_pri_vypadku_min", 60)):
+                out.append({**prev["item"], "pozn": "poslední známý stav, provozovatel teď neodpovídá"})
+                events += prev["events"]
             continue
         level, last, dev = grid_shortfall(pts, thr)
         item = {"code": s["region"], "name": s.get("name", s["region"]), "operator": operator, "level": 0}
@@ -1549,19 +1553,22 @@ def src_grid_refuges(cfg, fetch, mem):
         else:
             item["pozn"] = "předpověď se teprve sbírá" if pts else "zatím bez dat"
         item["level"] = level
+        evs = []
         if level:
             ev = make_event(f"Síť {operator}", s["region"], level,
                             f"Možný výpadek proudu – {item['name']}: spotřeba {last[1] / 1000:.1f} GW, "
-                            f"o {dev:.0f} % pod předpovědí {last[2] / 1000:.1f} GW ({operator}).",
+                            f"o {dev:.0f} % pod předpovědí {last[2] / 1000:.1f} GW ({operator}).".replace(".", ",", 2),
                             url=link, eid=f"sit:{s['region']}:{level}", when=last[0], detail=GRID_ADVICE)
             if level >= 2:
                 ev["advice"] = GRID_ADVICE
-            events.append(ev)
+            evs.append(ev)
+        mem.setdefault("posledni", {})[s["region"]] = {"cas": iso(now), "item": item, "events": evs}
+        events += evs
         out.append(item)
     if not out:
         raise RuntimeError("; ".join(errors) or "žádná síť není nastavená")
-    parts = [f"{o['code']} " + (f"{o['actual'] / 1000:.1f} GW ({-o['dev']:+.0f} % proti předpovědi)" if "actual" in o
-                                else o.get("pozn", "")) for o in out]
+    parts = [f"{o['code']} " + (f"{o['actual'] / 1000:.1f} GW ({-o['dev']:+.0f} % proti předpovědi)".replace(".", ",")
+                                if "actual" in o else o.get("pozn", "")) for o in out]
     info = "; ".join(parts) + (f"; nefunguje: {'; '.join(errors)}" if errors else "")
     return events, info, {"site": out, "time": iso(now)}
 
