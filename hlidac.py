@@ -121,8 +121,8 @@ def parse_date(s: str | None) -> datetime | None:
 
 
 def norm(s: str) -> str:
-    """Malá písmena bez diakritiky – pravidla pak fungují pro češtinu, němčinu i španělštinu."""
-    s = (s or "").lower().replace("ß", "ss")
+    """Malá písmena bez diakritiky – pravidla pak fungují pro češtinu, němčinu, španělštinu i jazyky východního křídla."""
+    s = (s or "").lower().replace("ß", "ss").replace("ł", "l").replace("đ", "d").replace("ø", "o")
     s = unicodedata.normalize("NFKD", s)
     s = "".join(c for c in s if not unicodedata.combining(c))
     s = re.sub(r"[‘’‚‛“”„\"'„“”‚‘’«»]", "", s)
@@ -1321,7 +1321,7 @@ def src_mapa(cfg, fetch):
     return [], info, {"zeme": zeme, "time": iso(now), "okno_hodin": c.get("okno_hodin", 72)}
 
 
-def europe_map(cfg, extras, regions) -> dict:
+def europe_map(cfg, extras, regions, events=None) -> dict:
     """Stav zemí na mapě Evropy: úřední varování (AA, EASA), stupně hlídače a zmínky ve zprávách."""
     cp = country_patterns()
     c = cfg.get("mapa") or {}
@@ -1348,6 +1348,9 @@ def europe_map(cfg, extras, regions) -> dict:
     for r in regions:
         if r["code"] in cp and r["level"]:
             add(r["code"], r["level"], f"Hlídač: stupeň {LEVELS[r['level']][0].capitalize()} – {r['events'][0]['title'] if r['events'] else r['name']}")
+    for e in events or []:               # státní zdroje jednotlivých zemí (síť, věstníky, krizové weby)
+        if e.get("zeme") and e["level"]:
+            add(e["zeme"], e["level"], f"{e['source']}: {e['title']}")
     m = extras.get("mapa") or {}
     yellow = c.get("zluta_od_zminek", 3)
     for code, z in (m.get("zeme") or {}).items():
@@ -1421,6 +1424,8 @@ IPMA_SEISMO = "https://api.ipma.pt/open-data/observation/seismic/7.json"
 MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
 GRID_ADVICE = ("Výpadek proudu v zemi útočiště. Cestu tam teď neplánuj: nepojedou pumpy, platby kartou "
                "ani mobilní síť. Počkej, až provozovatel síť obnoví, nebo zvol jiné útočiště.")
+GRID_EAST_ADVICE = ("Rozsáhlý výpadek proudu na východním křídle NATO. Může jít o poruchu, ale i o útok na síť – "
+                    "sleduj, jestli se nešíří dál, a měj doma vodu, světlo a nabité powerbanky.")
 GAZETTE_ADVICE = ("Úřední vyhlášení mimořádného stavu v zemi útočiště. Ověř, jestli platí omezení pohybu "
                   "nebo vstupu do země, než tam vyrazíš.")
 ANEPC_ADVICE = ("Velké zásahy portugalské civilní ochrany. Před cestou ověř uzavírky silnic a evakuace "
@@ -1432,6 +1437,22 @@ BOE_RULES = [
         r"|reservistas[a-z ]{0,40}(activa|incorpora)"),
 ]
 BOE_EXCLUDE = r"^(correccion de errores|sentencia|auto |recurso|cuestion de inconstitucionalidad)"
+ELI_API = "https://api.sejm.gov.pl/eli/acts/search"
+VESTNESIS = "https://www.vestnesis.lv/feed/JL"
+GAZETTE_EAST_ADVICE = ("Úřední vyhlášení mimořádného stavu nebo mobilizace v zemi na východním křídle NATO. "
+                       "Zkontroluj zásoby, natankuj a sleduj, jestli se situace nešíří.")
+PL_RULES = [
+    (2, r"(wprowadz|oglosz|zarzadz)[a-z]* (stanu wojennego|stanu wojny|mobilizacji)|mobilizacji powszechnej"),
+    (1, r"(wprowadz|przedluz)[a-z]* stanu (wyjatkowego|kleski zywiolowej)|stan[a-z]* wyjatkow[a-z]* na obszarze"
+        r"|zakaz[a-z]* przebywania[a-z ]{0,40}(przygraniczn|stref)"),
+]
+PL_EXCLUDE = r"rocznic|pamiec|represjonowan|kombatan|1981|o zmianie ustawy|tekstu jednolitego"
+LV_RULES = [
+    (2, r"iznemuma stavokl|karastavokl|izsludin[a-z]* mobilizacij|mobilizacij[a-z]* izsludin"),
+    (1, r"(izsludin|pagarin)[a-z]*.{0,40}arkarteja[a-z]* situacij|arkarteja[a-z]* situacij[a-z]*.{0,40}(izsludin|pagarin)"
+        r"|robez[a-z]* .{0,30}(slegs|slegsan)"),
+]
+LV_EXCLUDE = r"grozijum[a-z]* .{0,20}likum|atzist par spetu zaudejus"
 OIREACHTAS_RULES = [
     (2, r"emergency powers|national emergency"),
     (1, r"state of emergency|emergency measures|conscription|martial law|mobilis"
@@ -1509,17 +1530,107 @@ def eirgrid_rows(fetch, area, region, day, retry_s=8) -> list:
     return out
 
 
+PSE_LOAD = "https://api.raporty.pse.pl/api/kse-load"
+ELERING = "https://dashboard.elering.ee/api/system/with-plan"
+TRANSELECTRICA = "https://www.transelectrica.ro/sen-filter"
+
+
+def pse_points(fetch, day) -> list:
+    """PSE (Polsko): skutečné zatížení soustavy a předpověď po 15 minutách (MW)."""
+    q = urllib.parse.quote(f"business_date eq '{day:%Y-%m-%d}'")
+    js = json.loads(fetch(f"{PSE_LOAD}?$filter={q}&$first=200", timeout=25))
+    rows = js.get("value") if isinstance(js, dict) else None
+    if not isinstance(rows, list):
+        raise RuntimeError(f"PSE: neznámý formát odpovědi {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
+    pts = []
+    for r in rows:
+        t = parse_date(str(r.get("dtime_utc") or "").replace(" ", "T"))
+        a = _num(r.get("load_actual"))
+        if t and a is not None:
+            pts.append((t, a, _num(r.get("load_fcst"))))
+    return sorted(pts)
+
+
+def elering_points(fetch, now) -> list:
+    """Elering (Estonsko): skutečná spotřeba a plán po 15 minutách (MW)."""
+    fmt = "%Y-%m-%dT%H:%M:%S.000Z"
+    js = json.loads(fetch(f"{ELERING}?start={(now - timedelta(hours=6)):{fmt}}&end={(now + timedelta(hours=1)):{fmt}}", timeout=25))
+    d = js.get("data") if isinstance(js, dict) else None
+    if not isinstance(d, dict) or not isinstance(d.get("real"), list):
+        raise RuntimeError(f"Elering: neznámý formát odpovědi {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
+    plan = {int(p["timestamp"]): _num(p.get("consumption")) for p in d.get("plan") or [] if _num(p.get("timestamp")) is not None}
+    pts = []
+    for r in d["real"]:
+        ts, a = _num(r.get("timestamp")), _num(r.get("consumption"))
+        if ts is not None and a is not None:
+            pts.append((datetime.fromtimestamp(int(ts), timezone.utc), a, plan.get(int(ts))))
+    return sorted(pts)
+
+
+def transelectrica_now(fetch):
+    """Transelectrica (Rumunsko): okamžitá spotřeba soustavy (MW). Předpověď nezveřejňuje."""
+    js = json.loads(fetch(TRANSELECTRICA, timeout=25))
+    if not isinstance(js, list):
+        raise RuntimeError(f"Transelectrica: neznámý formát odpovědi {type(js).__name__}")
+    d = {k: v for x in js if isinstance(x, dict) for k, v in x.items()}
+    cons, ts = _num(d.get("CONS")), d.get("row1_HARTASEN_DATA")
+    if cons is None or not ts:
+        raise RuntimeError(f"Transelectrica: chybí spotřeba nebo čas {list(d)[:6]}")
+    t = datetime.strptime(ts, "%y/%m/%d %H:%M:%S").replace(tzinfo=_tz("Europe/Bucharest", 2)).astimezone(timezone.utc)
+    return t, cons
+
+
+def own_baseline(hist: dict, t, tz, window_min=20, days=8):
+    """Vlastní normál: medián spotřeby ze stejné denní doby (±`window_min`) v předchozích dnech stejného typu
+    (pracovní den / víkend). Pro provozovatele, kteří předpověď nezveřejňují."""
+    lt = t.astimezone(tz)
+    mins, weekend = lt.hour * 60 + lt.minute, lt.weekday() >= 5
+    vals = []
+    for k, v in hist.items():
+        kt = parse_date(k)
+        if not kt or not timedelta(hours=20) <= t - kt <= timedelta(days=days):
+            continue
+        kl = kt.astimezone(tz)
+        diff = abs(kl.hour * 60 + kl.minute - mins)
+        if min(diff, 1440 - diff) <= window_min and (kl.weekday() >= 5) == weekend:
+            vals.append(v)
+    if len(vals) < 2:
+        return None
+    vals.sort()
+    return vals[len(vals) // 2]
+
+
 def src_grid_refuges(cfg, fetch, mem):
-    """Elektrická síť v zemích útočišť: skutečná spotřeba proti předpovědi provozovatele.
+    """Elektrická síť v zemích útočišť a na východním křídle: skutečná spotřeba proti předpovědi provozovatele.
     Prudký propad pod předpověď = rozsáhlý výpadek (tak se projevil blackout na Pyrenejském poloostrově 28. 4. 2025)."""
     c = cfg["sit_utocista"]
     now = utcnow()
-    thr = c.get("pokles_pct", [15, 35])
     stale_after = timedelta(minutes=c.get("stara_data_min", 90))
     out, events, errors = [], [], []
     for s in c["systemy"]:
+        key = s.get("zeme") or s["region"]
+        thr = s.get("pokles_pct") or c.get("pokles_pct", [15, 35])
         try:
-            if s["typ"] == "ree":
+            if s["typ"] == "pse":
+                day = now.astimezone(_tz("Europe/Warsaw")).date()
+                pts = pse_points(fetch, day)
+                if len(pts) < 2:
+                    pts = pse_points(fetch, day - timedelta(days=1)) + pts
+                operator, link = "PSE", "https://raporty.pse.pl/"
+            elif s["typ"] == "elering":
+                pts = elering_points(fetch, now)
+                operator, link = "Elering", "https://dashboard.elering.ee/et/system"
+            elif s["typ"] == "transelectrica":
+                t, cons = transelectrica_now(fetch)
+                tz = _tz("Europe/Bucharest", 2)
+                hist = mem.setdefault("historie", {}).setdefault(key, {})
+                hist[iso(t.replace(second=0, microsecond=0))] = cons
+                for k in [k for k in hist if now - (parse_date(k) or now) > timedelta(days=9)]:
+                    del hist[k]
+                recent = sorted((parse_date(k), v) for k, v in hist.items() if now - (parse_date(k) or now) <= timedelta(hours=1))
+                pts = [(tt, v, own_baseline(hist, tt, tz)) for tt, v in recent]
+                operator, link = "Transelectrica", "https://www.transelectrica.ro/web/tel/sen-harta"
+            elif s["typ"] == "ree":
                 day = now.astimezone(_tz("Europe/Madrid")).date()
                 pts = ree_points(fetch, day)
                 if len([p for p in pts if p[1]]) < 2:          # krátce po půlnoci ještě nejsou dnešní data
@@ -1555,32 +1666,36 @@ def src_grid_refuges(cfg, fetch, mem):
             else:
                 raise RuntimeError(f"neznámý typ sítě {s['typ']}")
         except Exception as e:
-            errors.append(f"{s.get('name', s['region'])}: {type(e).__name__}: {e}"[:160])
-            prev = mem.get("posledni", {}).get(s["region"])      # krátký výpadek provozovatele: drž poslední stav
+            errors.append(f"{s.get('name', key)}: {type(e).__name__}: {e}"[:160])
+            prev = mem.get("posledni", {}).get(key)      # krátký výpadek provozovatele: drž poslední stav
             if prev and now - (parse_date(prev["cas"]) or now) <= timedelta(minutes=c.get("drzet_pri_vypadku_min", 120)):
                 out.append({**prev["item"], "pozn": "poslední známý stav, provozovatel teď neodpovídá"})
                 events += prev["events"]
             continue
         level, last, dev = grid_shortfall(pts, thr)
-        item = {"code": s["region"], "name": s.get("name", s["region"]), "operator": operator, "level": 0}
+        item = {"code": key, "region": s["region"], "name": s.get("name", key), "operator": operator, "level": 0}
         if last:
             stale = now - last[0] > stale_after
             item.update(actual=round(last[1]), forecast=round(last[2]), dev=dev, time=iso(last[0]), stale=stale)
             if stale:
                 level = 0
         else:
-            item["pozn"] = "předpověď se teprve sbírá" if pts else "zatím bez dat"
+            item["pozn"] = ("normál se teprve sbírá" if s["typ"] == "transelectrica" else "předpověď se teprve sbírá") \
+                if pts else "zatím bez dat"
         item["level"] = level
         evs = []
         if level:
             ev = make_event(f"Síť {operator}", s["region"], level,
                             f"Možný výpadek proudu – {item['name']}: spotřeba {last[1] / 1000:.1f} GW, "
                             f"o {dev:.0f} % pod předpovědí {last[2] / 1000:.1f} GW ({operator}).".replace(".", ",", 2),
-                            url=link, eid=f"sit:{s['region']}:{level}", when=last[0], detail=GRID_ADVICE)
+                            url=link, eid=f"sit:{key}:{level}", when=last[0],
+                            detail=GRID_ADVICE if s["region"] != "EU" else GRID_EAST_ADVICE)
+            if s.get("zeme"):
+                ev["zeme"] = s["zeme"]
             if level >= 2:
-                ev["advice"] = GRID_ADVICE
+                ev["advice"] = ev["detail"]
             evs.append(ev)
-        mem.setdefault("posledni", {})[s["region"]] = {"cas": iso(now), "item": item, "events": evs}
+        mem.setdefault("posledni", {})[key] = {"cas": iso(now), "item": item, "events": evs}
         events += evs
         out.append(item)
     if not out:
@@ -1625,16 +1740,19 @@ def _match_level(title: str, rules) -> int:
 
 
 def src_gazettes(cfg, fetch, mem):
-    """Úřední věstníky a parlamenty útočišť: BOE (Španělsko, denně) a návrhy zákonů Oireachtas (Irsko).
-    Vyhlášení stavu nouze, výjimečného stavu nebo mobilizace se tu objeví úředně dřív, než se rozkřikne."""
+    """Úřední věstníky a parlamenty: BOE (Španělsko), návrhy zákonů Oireachtas (Irsko), Dziennik Ustaw a Monitor
+    Polski (Polsko, ELI API Sejmu) a Latvijas Vēstnesis (Lotyšsko). Vyhlášení stavu nouze, výjimečného
+    nebo válečného stavu či mobilizace se tu objeví úředně dřív, než se rozkřikne."""
     c = cfg["vestniky"]
     now = utcnow()
     active = mem.setdefault("active", {})
     info, errors, parts = [], [], {}
 
-    def add(key, title, url, level, src, region):
+    def add(key, title, url, level, src, region, zeme=None):
         if key not in active:
             active[key] = {"title": title, "url": url, "level": level, "src": src, "region": region, "first": iso(now)}
+            if zeme:
+                active[key]["zeme"] = zeme
 
     if c.get("boe", True):
         try:
@@ -1685,6 +1803,43 @@ def src_gazettes(cfg, fetch, mem):
             info.append(f"Oireachtas {n} návrhů za {c.get('oireachtas_dni', 14)} dní")
         except Exception as e:
             errors.append(f"Oireachtas: {type(e).__name__}: {e}"[:150])
+    if c.get("eli_pl", False):
+        try:
+            since = (now - timedelta(days=c.get("eli_dni", 7))).strftime("%Y-%m-%d")
+            n = 0
+            for pub in c.get("eli_vydani", ["DU", "MP"]):
+                js = json.loads(fetch(f"{ELI_API}?publisher={pub}&pubDateFrom={since}&limit=500", timeout=30))
+                items = js.get("items") if isinstance(js, dict) else None
+                if not isinstance(items, list):
+                    raise RuntimeError(f"ELI: neznámý formát {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
+                for it in items:
+                    title = it.get("title") or ""
+                    n += 1
+                    if not title or re.search(PL_EXCLUDE, norm(title)):
+                        continue
+                    lvl = _match_level(title, PL_RULES)
+                    if lvl and it.get("ELI"):
+                        add(f"eli:{it['ELI']}", f"{it.get('displayAddress') or it['ELI']}: {title}",
+                            f"https://eli.gov.pl/eli/{it['ELI']}/ogl", lvl,
+                            "Dziennik Ustaw" if pub == "DU" else "Monitor Polski", "EU", "PL")
+            parts["eli_pl"] = {"n": n}
+            info.append(f"Polsko {n} aktů za {c.get('eli_dni', 7)} dní")
+        except Exception as e:
+            errors.append(f"ELI Polsko: {type(e).__name__}: {e}"[:150])
+    if c.get("vestnesis_lv", False):
+        try:
+            items = parse_feed(fetch(c.get("vestnesis_url", VESTNESIS), timeout=25))
+            for title, link, _ in items:
+                if re.search(LV_EXCLUDE, norm(title)):
+                    continue
+                lvl = _match_level(title, LV_RULES)
+                if lvl:
+                    add(f"lv:{short_hash((link or '') + title)}", title, link or "https://www.vestnesis.lv/",
+                        lvl, "Latvijas Vēstnesis", "EU", "LV")
+            parts["vestnesis_lv"] = {"n": len(items)}
+            info.append(f"Lotyšsko {len(items)} aktů v posledním čísle")
+        except Exception as e:
+            errors.append(f"Latvijas Vēstnesis: {type(e).__name__}: {e}"[:150])
     if not parts:
         raise RuntimeError("; ".join(errors) or "žádný věstník není zapnutý")
     hold = timedelta(days=c.get("drzet_dni", 7))
@@ -1692,10 +1847,13 @@ def src_gazettes(cfg, fetch, mem):
         del active[k]
     events = []
     for k, a in active.items():
+        adv = GAZETTE_EAST_ADVICE if a["region"] == "EU" else GAZETTE_ADVICE
         ev = make_event(a["src"], a["region"], a["level"], f"{a['src']}: {a['title']}", url=a["url"],
-                        eid=f"vestnik:{k}", when=parse_date(a["first"]), detail=GAZETTE_ADVICE)
+                        eid=f"vestnik:{k}", when=parse_date(a["first"]), detail=adv)
+        if a.get("zeme"):
+            ev["zeme"] = a["zeme"]
         if a["level"] >= 2:
-            ev["advice"] = GAZETTE_ADVICE
+            ev["advice"] = adv
         events.append(ev)
     info = ", ".join(info) + f"; zachyceno: {len(active)}" + (f"; nefunguje: {'; '.join(errors)}" if errors else "")
     return events, info, {**parts, "zachyceno": [{**a, "key": k} for k, a in active.items()][:10]}
@@ -1766,6 +1924,54 @@ def anepc_eval(c, raw, now):
 
 def _pl(n: int, one: str, few: str, many: str) -> str:
     return f"{n} {one if n == 1 else few if 2 <= n <= 4 else many}"
+
+
+OKF_SUGARZAS = "https://www.katasztrofavedelem.hu/10464/RSS_hattersugarzas"
+RAD_EAST_ADVICE = ("Zvýšená radiace na více sondách v Maďarsku (u Paksu je jaderná elektrárna). Sleduj vývoj a směr větru; "
+                   "měj připravené jódové tablety jen podle pokynů úřadů a plán, kde se ukrýt.")
+
+
+def src_radiation_hu(cfg, fetch):
+    """Radiace v Maďarsku: dávkový příkon z měřicí sítě maďarské civilní ochrany (BM OKF), asi 80 stanic."""
+    c = cfg["radiace_hu"]
+    root = ET.fromstring(fetch(c.get("url", OKF_SUGARZAS), timeout=25))
+    latest = {}
+    for it in root.iter("item"):
+        title, desc = child_text(it, "title"), child_text(it, "description")
+        m = re.search(r"([\d]+(?:[.,]\d+)?)\s*nsv/h", desc, re.I)
+        st = re.search(r":\s*(.+?)\s+\d{4}-\d{2}-\d{2}", title)
+        t = parse_date(child_text(it, "pubDate"))
+        if not m or not st:
+            continue
+        name, val = st.group(1).strip(), float(m.group(1).replace(",", "."))
+        if name not in latest or (t and latest[name][1] and t > latest[name][1]):
+            latest[name] = (val, t)
+    if not latest:
+        raise RuntimeError("BM OKF: v kanálu nejsou měření – změnil se formát?")
+    vals = sorted(v for v, _ in latest.values())
+    warn, alarm = c.get("warn_nsvh", 600), c.get("alarm_nsvh", 2000)
+    n_warn = sum(1 for v in vals if v >= warn)
+    n_alarm = sum(1 for v in vals if v >= alarm)
+    need = c.get("min_stanic", 2)
+    lvl = 2 if n_alarm >= need else 1 if n_warn >= need else 0
+    top_name, (top_val, top_t) = max(latest.items(), key=lambda kv: kv[1][0])
+    newest = max((t for _, t in latest.values() if t), default=None)
+    events = []
+    if lvl:
+        ev = make_event("BM OKF radiace", c.get("region", "EU"), lvl,
+                        f"Zvýšená radiace v Maďarsku: {n_alarm if lvl >= 2 else n_warn} stanic nad "
+                        f"{(alarm if lvl >= 2 else warn) / 1000:.1f} µSv/h, nejvíc {top_name} {top_val / 1000:.2f} µSv/h".replace(".", ","),
+                        url="https://www.katasztrofavedelem.hu/modules/hattersugarzas/terkep",
+                        eid=f"radhu:{lvl}", detail=RAD_EAST_ADVICE)
+        ev["zeme"] = c.get("zeme", "HU")
+        if lvl >= 2:
+            ev["advice"] = RAD_EAST_ADVICE
+        events.append(ev)
+    median = vals[len(vals) // 2]
+    info = f"{len(vals)} stanic, medián {median / 1000:.2f} µSv/h, nejvíc {top_name} {top_val / 1000:.2f} µSv/h"
+    zone = {"name": "Maďarsko (BM OKF)", "n": len(vals), "median": round(median / 1000, 3),
+            "max": round(top_val / 1000, 3), "max_name": top_name, "level": lvl, "time": iso(newest) if newest else ""}
+    return events, info, {"zona": zone, "warn": warn / 1000, "alarm": alarm / 1000}
 
 
 def _in_bbox(lat, lon, bb) -> bool:
@@ -1880,10 +2086,11 @@ SOURCES = {
     "psp":            ("Sněmovní tisky (PSP)", src_psp, "psp"),
     "easa":           ("EASA – konfliktní zóny", src_easa, "easa"),
     "emsc":           ("Zemětřesení (EMSC)", src_emsc, "zemetreseni"),
-    "sit":            ("Elektrická síť útočišť (REE, EirGrid)", src_grid_refuges, "sit_utocista"),
-    "vestniky":       ("Úřední věstníky útočišť (BOE, Oireachtas)", src_gazettes, "vestniky"),
+    "sit":            ("Elektrická síť (útočiště a východní křídlo)", src_grid_refuges, "sit_utocista"),
+    "vestniky":       ("Úřední věstníky (BOE, Oireachtas, Polsko, Lotyšsko)", src_gazettes, "vestniky"),
     "anepc":          ("Civilní ochrana Portugalska (ANEPC)", src_anepc, "anepc"),
     "seismo_ib":      ("Zemětřesení – IGN a IPMA", src_seismo_refuges, "zemetreseni_utocista"),
+    "radiace_hu":     ("Radiace – Maďarsko (BM OKF)", src_radiation_hu, "radiace_hu"),
 }
 
 
@@ -1949,6 +2156,8 @@ def run_news(cfg, fetch, state, now):
                         if key not in hits and key not in seen:   # vypršelý titulek se znovu nepočítá
                             hits[key] = {"rule": r["id"], "feed": feed["id"], "feed_name": feed["name"],
                                          "title": title, "url": link, "seen": iso(now)}
+                            if feed.get("zeme"):
+                                hits[key]["zeme"] = feed["zeme"]
             except Exception as e:
                 health[feed["id"]] = {"ok": False, "error": f"{type(e).__name__}: {e}"[:200]}
 
@@ -1974,6 +2183,8 @@ def run_news(cfg, fetch, state, now):
                         url=rh[0]["url"], detail=detail, eid=f"news:{r['id']}:L{lvl}", when=parse_date(rh[0]["seen"]))
         if r.get("advice"):
             ev["advice"] = r["advice"]
+        if r.get("zeme") or rh[0].get("zeme"):
+            ev["zeme"] = r.get("zeme") or rh[0]["zeme"]
         events.append(ev)
     return events, health
 
@@ -2449,6 +2660,43 @@ def handle_notifications(cfg, state, events, overall, region_levels, now):
     state["prev_overall"] = overall
 
 
+def east_overview(cfg, state, events) -> list:
+    """Státní zdroje zemí východního křídla NATO: co se u které země hlídá, jestli to odpovídá a co hlásí."""
+    zeme = (cfg.get("vychod") or {}).get("zeme") or []
+    extras = state.get("extras", {})
+    grid = {g["code"]: g for g in (extras.get("sit") or {}).get("site", [])}
+    feeds = (state.get("sources", {}).get("news") or {}).get("feeds") or {}
+    gz = extras.get("vestniky") or {}
+    rad = (extras.get("radiace_hu") or {}).get("zona")
+    src_ok = {k: v.get("ok", False) for k, v in state.get("sources", {}).items()}
+    out = []
+    for z in zeme:
+        code, zdroje = z["code"], []
+        g = grid.get(code)
+        if g:
+            info = (f"{g['actual'] / 1000:.1f} GW, {-g['dev']:+.0f} % proti " + ("normálu" if g["operator"] == "Transelectrica" else "předpovědi")
+                    ).replace(".", ",") if "actual" in g else g.get("pozn", "")
+            zdroje.append({"nazev": f"Elektrická síť ({g['operator']})", "info": info, "level": g.get("level", 0),
+                           "ok": not str(g.get("pozn", "")).startswith("poslední")})   # „normál se sbírá“ není chyba
+        if code == "PL" and gz.get("eli_pl"):
+            zdroje.append({"nazev": "Dziennik Ustaw a Monitor Polski", "ok": src_ok.get("vestniky", False),
+                           "info": f"{gz['eli_pl']['n']} aktů za týden"})
+        if code == "LV" and gz.get("vestnesis_lv"):
+            zdroje.append({"nazev": "Latvijas Vēstnesis", "ok": src_ok.get("vestniky", False),
+                           "info": f"{gz['vestnesis_lv']['n']} aktů v posledním čísle"})
+        if code == "HU" and rad:
+            zdroje.append({"nazev": "Radiace (BM OKF)", "ok": src_ok.get("radiace_hu", False), "level": rad.get("level", 0),
+                           "info": f"{rad['n']} stanic, nejvíc {rad['max']:.2f} µSv/h ({rad['max_name']})".replace(".", ",")})
+        for f in cfg.get("news", {}).get("feeds", []):
+            if f.get("zeme") == code:
+                h = feeds.get(f["id"]) or {}
+                zdroje.append({"nazev": f["name"], "ok": bool(h.get("ok")), "info": h.get("info") or h.get("error", "zatím bez dat")})
+        evs = [e for e in events if e.get("zeme") == code]
+        out.append({"code": code, "name": z.get("name", code), "pozn": z.get("pozn", ""),
+                    "level": max([e["level"] for e in evs] or [0]), "events": evs[:4], "zdroje": zdroje})
+    return out
+
+
 def build_status(cfg, state, events, region_levels, overall, now):
     def lv(n):
         return {"level": n, "label": LEVELS[n][0], "emoji": LEVELS[n][1]}
@@ -2473,6 +2721,10 @@ def build_status(cfg, state, events, region_levels, overall, now):
                         "last_ok": st.get("last_ok", ""), "info": st.get("info", ""), "error": st.get("error", ""),
                         "feeds": st.get("feeds")})
     ok = sum(1 for s in sources if s["ok"])
+    radiation = dict(extras.get("bfs") or {})
+    hu = (extras.get("radiace_hu") or {}).get("zona")
+    if hu:
+        radiation["zones"] = list(radiation.get("zones") or []) + [hu]
     interval = cfg.get("interval_minutes", 10)
     # GitHub Actions spouští plán s občasným zpožděním – varování „stará data“ až po delší době
     stale = cfg.get("stale_after_minutes") or (75 if os.environ.get("GITHUB_ACTIONS") == "true" else max(30, 3 * interval))
@@ -2483,17 +2735,19 @@ def build_status(cfg, state, events, region_levels, overall, now):
         "actions": cfg.get("actions") or DEFAULT_ACTIONS, "plan": {**cfg.get("plan", {}), "trasy": trasy},
         "recommended": rec, "route_time": route.get("time", ""),
         "rivers": (extras.get("chmi") or {}).get("rivers", []),
-        "radiation": extras.get("bfs") or {},
+        "radiation": radiation,
         "fuel": (extras.get("fuel") or {}).get("points", {}),
         "gas": extras.get("gas") or {},
-        "evropa": europe_map(cfg, extras, regions),
+        "evropa": europe_map(cfg, extras, regions, events),
         "lng": extras.get("lng") or {},
         "gasout": extras.get("gasout") or {},
         "internet": extras.get("ioda") or {},
         "gdelt": (extras.get("gdelt") or {}).get("dotazy", []),
         "quakes": extras.get("emsc") or {},
         "space": extras.get("noaa") or {},
-        "utocista": {"sit": (extras.get("sit") or {}).get("site", []), "vestniky": extras.get("vestniky") or {},
+        "vychod": east_overview(cfg, state, events),
+        "utocista": {"sit": [g for g in (extras.get("sit") or {}).get("site", []) if g.get("region") != "EU"],
+                     "vestniky": extras.get("vestniky") or {},
                      "anepc": extras.get("anepc") or {}, "seismo": extras.get("seismo_ib") or {}},
         "pripravenost": state.get("prep_items", []),
         "seznamy": cfg.get("seznamy") or DEFAULT_CHECKLISTS,
@@ -2711,12 +2965,19 @@ def demo_status(cfg):
         "emsc": {"days": 7, "min_mag": 2.0, "quakes": [
             {"zone": "Chebsko a Vogtland", "mag": 2.4, "time": iso(now - timedelta(days=2)), "place": "Czech Republic", "depth": 9}]},
         "sit": {"time": iso(now), "site": [
-            {"code": "ES", "name": "Španělsko", "operator": "REE", "level": 0, "actual": 27180, "forecast": 27420,
+            {"code": "ES", "region": "ES", "name": "Španělsko", "operator": "REE", "level": 0, "actual": 27180, "forecast": 27420,
              "dev": 0.9, "time": iso(now - timedelta(minutes=10)), "stale": False},
-            {"code": "IE", "name": "Irsko", "operator": "EirGrid", "level": 0, "actual": 5040, "forecast": 5110,
-             "dev": 1.4, "time": iso(now - timedelta(minutes=25)), "stale": False}]},
+            {"code": "IE", "region": "IE", "name": "Irsko", "operator": "EirGrid", "level": 0, "actual": 5040, "forecast": 5110,
+             "dev": 1.4, "time": iso(now - timedelta(minutes=25)), "stale": False},
+            {"code": "PL", "region": "EU", "name": "Polsko", "operator": "PSE", "level": 0, "actual": 18950, "forecast": 18700,
+             "dev": -1.3, "time": iso(now - timedelta(minutes=20)), "stale": False},
+            {"code": "EE", "region": "EU", "name": "Estonsko", "operator": "Elering", "level": 0, "actual": 1051, "forecast": 1040,
+             "dev": -1.1, "time": iso(now - timedelta(minutes=20)), "stale": False},
+            {"code": "RO", "region": "EU", "name": "Rumunsko", "operator": "Transelectrica", "level": 0, "pozn": "normál se teprve sbírá"}]},
         "vestniky": {"boe": {"n": 212, "dny": [(now - timedelta(days=1)).date().isoformat()]}, "oireachtas": {"n": 12},
-                     "zachyceno": []},
+                     "eli_pl": {"n": 24}, "vestnesis_lv": {"n": 17}, "zachyceno": []},
+        "radiace_hu": {"zona": {"name": "Maďarsko (BM OKF)", "n": 80, "median": 0.112, "max": 0.181, "max_name": "Rétság",
+                                "level": 0, "time": iso(now - timedelta(minutes=30))}},
         "anepc": {"n": 54, "lidi": 486, "velke": 1, "level": 1, "time": iso(now), "zasahy": [
             {"misto": "Arganil", "okres": "Coimbra", "druh": "Incêndio Rural em Povoamento Florestal", "lidi": 212,
              "letadla": 5, "stav": "Em Curso", "velky": True, "time": iso(now - timedelta(hours=3))}]},
@@ -2724,6 +2985,11 @@ def demo_status(cfg):
             {"src": "IGN", "mag": 3.1, "time": iso(now - timedelta(hours=9)), "place": "Golfo De Cádiz", "region": "ES",
              "lat": 36.4, "lon": -7.6, "url": "https://www.ign.es/"}]},
     }
+    ee = make_event("Zprávy", "EU", 1, "Estonsko – krizové varování (jen 1 zdroj – ověř): Ukázka – Eesti sulgeb piiripunktid "
+                    "Venemaa piiril", url="https://www.kriis.ee/", eid="demo-ee", when=now - timedelta(hours=2))
+    ee["zeme"] = "EE"
+    events.append(ee)
+    state["sources"]["news"]["feeds"] = {f["id"]: {"ok": True, "info": "20 titulků"} for f in cfg.get("news", {}).get("feeds", [])}
     events.append(make_event("ANEPC", "PT", 1, "Portugalsko – 1 velký zásah ANEPC, celkem 486 lidí v terénu: "
                              "Arganil (212 lidí, 5 letadel)", url="https://fogos.pt/", eid="anepc:L1", detail=ANEPC_ADVICE))
     state["prep_items"] = preparedness(cfg, now)

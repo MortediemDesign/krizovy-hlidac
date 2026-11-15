@@ -372,6 +372,11 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       <p class="attr">Data: NOAA SWPC. Stupnice G0–G5, od G4 hrozí poruchy rozvodných sítí.</p></section>
     <section id="s-quake" hidden><h2>Zemětřesení v okolí</h2><ul class="rows" id="quakes"></ul>
       <p class="attr">Data: EMSC. Roje na Chebsku bývají slabé, cítit jsou zhruba od M3.</p></section>
+    <section id="s-east" hidden><h2>Východní křídlo – státní zdroje</h2><ul class="rows" id="east"></ul>
+      <p class="attr">Úřední zdroje Polska, Pobaltí, Finska, Moldavska, Rumunska, Slovenska a Maďarska: elektrická síť
+        (PSE, Elering, Transelectrica), věstníky (Dziennik Ustaw, Monitor Polski, Latvijas Vēstnesis), radiace v Maďarsku
+        a krizové weby vlád a ministerstev. Úřední vyhlášení zvedne oblast Evropa/NATO a obarví zemi na mapě Evropy.
+        Litva a Finsko blokují přístup z cloudu, u nich se hlídá veřejnoprávní LRT a Yle.</p></section>
     <section id="s-ref" hidden><h2>Útočiště – státní zdroje</h2><ul class="rows" id="ref-grid"></ul>
       <p class="sub" id="h-ref-gz">Úřední věstníky</p><ul class="rows" id="ref-gz"></ul>
       <p class="sub" id="h-ref-pc">Civilní ochrana Portugalska</p><ul class="rows" id="ref-pc"></ul>
@@ -871,6 +876,12 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       ov.push(row(mini(q && q.mag >= 3.5 ? 1 : 0), "Zemětřesení", q ? `M${dec(q.mag)}` : "klid",
         q ? `naposledy ${fmtTime(q.time)}, ${q.zone}` : `za ${qk.days || 7} dní nic od M${dec(qk.min_mag || 2)}`, go("s-quake")));
     }
+    const east = s.vychod || [];
+    if (east.length) {
+      const bad = east.filter(z => z.level);
+      ov.push(row(mini(Math.max(0, ...east.map(z => z.level))), "Východní křídlo", bad.length ? "pozor" : "v pořádku",
+        bad.length ? bad.map(z => z.name).join(", ") : `${east.length} zemí bez úředního hlášení`, go("s-east")));
+    }
     const ut = s.utocista || {};
     const utGrid = ut.sit || [], utGz = ut.vestniky || {}, utPc = ut.anepc || {}, utQ = ut.seismo || {};
     const utCaught = utGz.zachyceno || [];
@@ -1033,6 +1044,22 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       ? qk.quakes.slice(0, 8).map(q => row(mini(q.mag >= 5 ? 2 : q.mag >= 3.5 ? 1 : 0), `M${dec(q.mag)} ${q.place || q.zone}`,
           fmtTime(q.time), `${q.zone}` + (q.depth != null ? `, hloubka ${q.depth} km` : "")))
       : [row(mini(0), "Klid", "", `Za ${qk.days || 7} dní žádný otřes od M${dec(qk.min_mag || 2)}.`)]));
+    $("s-east").hidden = !east.length;
+    $("east").replaceChildren(...east.flatMap(z => {
+      const okN = z.zdroje.filter(x => x.ok).length;
+      const parts = z.zdroje.map(x => {
+        const short = /síť/i.test(x.nazev) ? `síť ${x.info}` : /Radiace/.test(x.nazev) ? `radiace ${x.info}`
+          : /Dziennik|Vēstnesis/.test(x.nazev) ? `${x.nazev} ${x.info}` : x.nazev;
+        return x.ok ? short : `${short} (nefunguje)`;
+      });
+      const head = row(mini(z.level), z.name, z.level ? LEVEL_TEXT[z.level].toLowerCase() : "klid",
+        [z.zdroje.length ? `${okN}/${z.zdroje.length} zdrojů: ${parts.join(", ")}` : "", z.pozn].filter(Boolean).join(". "));
+      return [head, ...z.events.map(e => {
+        const u = safeUrl(e.url);
+        const name = u ? el("a", {href:u, target:"_blank", rel:"noopener", class:"name", text:e.title}) : e.title;
+        return row(lamp(e.level), name, fmtTime(e.time), e.source);
+      })];
+    }));
     $("s-ref").hidden = !(utGrid.length || utPc.n != null || utGz.boe || utGz.oireachtas || Array.isArray(utQ.quakes));
     $("ref-grid").replaceChildren(...utGrid.map(g => {
       if (g.actual == null) return row(mini(0), `Síť – ${g.name}`, "", `${g.operator}: ${g.pozn || "bez dat"}`);

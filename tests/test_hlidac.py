@@ -283,6 +283,57 @@ def ipma_json(quakes):
          "depth": 10, "magType": "L", "source": "IPMA"} for m, place, t, lat, lon in quakes]}).encode()
 
 
+def pse_json(actual, fcst, step=15):
+    end = _now_min().replace(minute=_now_min().minute // 15 * 15) - timedelta(minutes=15)
+    rows = []
+    for i, (a, f) in enumerate(zip(actual, fcst)):
+        t = end - timedelta(minutes=step * (len(actual) - 1 - i))
+        rows.append({"dtime_utc": t.strftime("%Y-%m-%d %H:%M:%S"), "load_actual": a, "load_fcst": f,
+                     "business_date": t.strftime("%Y-%m-%d")})
+    rows.append({"dtime_utc": (end + timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S"), "load_actual": None, "load_fcst": 16000})
+    return json.dumps({"value": rows, "nextLink": None}).encode()
+
+
+def elering_json(real, plan):
+    end = int((_now_min() - timedelta(minutes=15)).timestamp()) // 900 * 900
+    ts = [end - 900 * (len(real) - 1 - i) for i in range(len(real))]
+    return json.dumps({"success": True, "data": {
+        "real": [{"timestamp": t, "consumption": v, "production": 700} for t, v in zip(ts, real)],
+        "plan": [{"timestamp": t, "consumption": v} for t, v in zip(ts, plan)] + [{"timestamp": end + 900, "consumption": 900}]}}).encode()
+
+
+def transel_json(cons, when=None):
+    t = (when or datetime.now(timezone.utc)).astimezone(hlidac._tz("Europe/Bucharest", 2))
+    return json.dumps([{"MUKA": "705"}, {"row1_HARTASEN_DATA": t.strftime("%y/%m/%d %H:%M:%S")}, {"CONS": str(cons)},
+                       {"PROD": "5700"}, {"PROG": ""}]).encode()
+
+
+def okf_rss(stations):
+    now = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=1)))
+    items = "".join(f"<item><title>Háttérsugárzási adat: {n} {now:%Y-%m-%d %H:%M:00}</title>"
+                    f"<link>https://www.katasztrofavedelem.hu/modules/hattersugarzas/terkep</link>"
+                    f"<description>{n} mérési ponton a háttérsugárzás {v} nSV/h {now:%Y-%m-%d %H:%M:00} a mért időpontban.</description>"
+                    f"<pubDate>{now:%a, %d %b %Y %H:%M:00 +0100}</pubDate></item>" for n, v in stations)
+    return f'<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>BM OKF</title>{items}</channel></rss>'.encode()
+
+
+def eli_json(titles):
+    return json.dumps({"count": len(titles), "items": [
+        {"ELI": f"DU/2026/{1500 + n}", "displayAddress": f"Dz.U. 2026 poz. {1500 + n}", "title": t, "promulgation": "2026-11-14"}
+        for n, t in enumerate(titles)], "totalCount": len(titles)}).encode()
+
+
+def east_routes():
+    return {"api.raporty.pse.pl": pse_json([16500, 16400, 16300], [16400, 16450, 16350]),
+            "dashboard.elering.ee": elering_json([900, 905, 910], [895, 900, 915]),
+            "transelectrica.ro": transel_json(6600),
+            "katasztrofavedelem.hu/10464": okf_rss([("Rétság", 129.66), ("Ózd", 110.2), ("Paks", 95.0)]),
+            "api.sejm.gov.pl": eli_json(["Rozporządzenie Ministra Finansów w sprawie zezwoleń"]),
+            "vestnesis.lv": rss([("Par Mareka Gruškevica komandējumu", None)]),
+            **{k: rss([]) for k in ("kriis.ee", "riigikogu.ee", "mod.gov.lv", "ast.lv", "lrt.lt", "yle.fi", "gov.md",
+                                    "mai.gov.ro", "mosr.sk", "vlada.gov.sk", "honvedelem.hu", "katasztrofavedelem.hu/10463")}}
+
+
 def refuge_routes():
     r, _ = eir_routes([4000, 4010, 4020])
     return {"apidatos.ree.es": ree_json([27000, 27100, 27200], [27200, 27150, 27250]), **r,
@@ -290,7 +341,7 @@ def refuge_routes():
             "api.oireachtas.ie": oir_json(["Planning and Development (Wind Turbines) Bill 2026"]),
             "api.fogos.pt": fogos_json([(4, 0, False, "Braga"), (12, 1, False, "Leiria")]),
             "ign.es/ign/RssTools": ign_rss([]), "api.ipma.pt": ipma_json([]),
-            "dsn.gob.es": rss([]), "incibe.es": rss([]), "ncsc.gov.ie": rss([])}
+            "dsn.gob.es": rss([]), "incibe.es": rss([]), "ncsc.gov.ie": rss([]), **east_routes()}
 
 
 def base_routes():
@@ -378,9 +429,11 @@ class TestRules(unittest.TestCase):
             "Fotbalisté Slavie porazili Plzeň",
             "Russland testet Atomwaffe mit neuer Rakete",
         ]
+        own_feeds = {r["id"] for r in self.rules if r.get("feeds")}   # pravidla jen pro úřední kanály jiných zemí
         for title in cases:
             with self.subTest(title=title):
-                self.assertEqual(self.ids(title) - {"spanelsko"} if "Španěl" in title else self.ids(title), set())
+                got = self.ids(title) - own_feeds
+                self.assertEqual(got - {"spanelsko"} if "Španěl" in title else got, set())
 
 
 class TestSources(unittest.TestCase):
@@ -1206,13 +1259,15 @@ class TestRefugeSources(unittest.TestCase):
             hlidac.time.sleep = orig
 
     def test_grid_errors(self):
+        cfg = {**CFG, "sit_utocista": {**CFG["sit_utocista"],
+                                       "systemy": [x for x in CFG["sit_utocista"]["systemy"] if x["region"] != "EU"]}}
         r = {**refuge_routes(), "apidatos.ree.es": b'{"errors": [{"detail": "x"}]}'}
-        ev, info, extra = hlidac.src_grid_refuges(CFG, FakeNet(r), {})
+        ev, info, extra = hlidac.src_grid_refuges(cfg, FakeNet(r), {})
         self.assertIn("nefunguje: Španělsko", info)
         self.assertEqual([x["code"] for x in extra["site"]], ["IE"])
         r["area=demandactual"] = b"<html>"
         with self.assertRaises(RuntimeError):
-            hlidac.src_grid_refuges(CFG, FakeNet(r), {})
+            hlidac.src_grid_refuges(cfg, FakeNet(r), {})
 
     def test_gazettes(self):
         mad = hlidac.utcnow().astimezone(hlidac._tz("Europe/Madrid")).date()
@@ -1299,6 +1354,126 @@ class TestRefugeSources(unittest.TestCase):
         self.assertIn("kyber_ie", ids("DDoS attacks targeting Irish government websites"))
         self.assertNotIn("kyber_ie", ids("Critical vulnerabilities in Citrix NetScaler Gateway & ADC"))
 
+
+
+class TestEastSources(unittest.TestCase):
+    def east_cfg(self):
+        return {**CFG, "sit_utocista": {**CFG["sit_utocista"],
+                                        "systemy": [x for x in CFG["sit_utocista"]["systemy"] if x["region"] == "EU"]}}
+
+    def test_grid_pse_elering(self):
+        cfg = self.east_cfg()
+        ev, info, extra = hlidac.src_grid_refuges(cfg, FakeNet(east_routes()), {})
+        self.assertEqual(ev, [])
+        by = {x["code"]: x for x in extra["site"]}
+        self.assertEqual((by["PL"]["operator"], by["PL"]["actual"], by["PL"]["region"]), ("PSE", 16300, "EU"))
+        self.assertEqual(by["EE"]["actual"], 910)
+        self.assertEqual(by["RO"].get("pozn"), "normál se teprve sbírá")
+        r = {**east_routes(), "api.raporty.pse.pl": pse_json([16500, 9000, 8500], [16400, 16450, 16350])}
+        ev, _, _ = hlidac.src_grid_refuges(cfg, FakeNet(r), {})
+        self.assertEqual([(e["region"], e.get("zeme"), e["level"]) for e in ev], [("EU", "PL", 2)])
+        self.assertIn("Polsko", ev[0]["title"])
+        self.assertIn("východním křídle", ev[0]["advice"])
+
+    def test_grid_transelectrica_own_baseline(self):
+        cfg = self.east_cfg()
+        mem = {}
+        now = hlidac.utcnow().replace(second=0, microsecond=0)
+        tz = hlidac._tz("Europe/Bucharest", 2)
+        hist = mem.setdefault("historie", {}).setdefault("RO", {})
+        for days in range(7, 22):                       # normál ze stejné denní doby a stejného typu dne
+            t = now - timedelta(days=days // 2 + (7 if days % 2 else 0))
+            if (t.astimezone(tz).weekday() >= 5) == (now.astimezone(tz).weekday() >= 5):
+                hist[hlidac.iso(t)] = 6600
+        hist[hlidac.iso(now - timedelta(minutes=10))] = 3000
+        r = {**east_routes(), "transelectrica.ro": transel_json(2900, now)}
+        ev, info, extra = hlidac.src_grid_refuges(cfg, FakeNet(r), mem)
+        ro = next(x for x in extra["site"] if x["code"] == "RO")
+        self.assertEqual(ro["forecast"], 6600)
+        self.assertEqual([(e.get("zeme"), e["level"]) for e in ev], [("RO", 2)])     # o 55 % pod normálem
+        self.assertIn("RO", info)
+
+    def test_own_baseline_needs_history(self):
+        tz = hlidac._tz("Europe/Bucharest", 2)
+        now = hlidac.utcnow()
+        self.assertIsNone(hlidac.own_baseline({hlidac.iso(now - timedelta(days=7)): 6000}, now, tz))
+        hist = {hlidac.iso(now - timedelta(days=7)): 6000, hlidac.iso(now - timedelta(days=14, minutes=5)): 6200,
+                hlidac.iso(now - timedelta(days=7, hours=5)): 9000}            # jiná denní doba se nepočítá
+        self.assertEqual(hlidac.own_baseline(hist, now, tz, days=15), 6200)
+
+    def test_gazettes_poland_latvia(self):
+        cfg = {**CFG, "vestniky": {**CFG["vestniky"], "boe": False, "oireachtas": False}}
+        routes = {"api.sejm.gov.pl": eli_json([
+                      "Rozporządzenie Prezydenta Rzeczypospolitej Polskiej w sprawie wprowadzenia stanu wojennego na terytorium Rzeczypospolitej Polskiej",
+                      "Rozporządzenie Rady Ministrów w sprawie wprowadzenia stanu wyjątkowego na obszarze części województwa podlaskiego",
+                      "Ustawa o zmianie ustawy o stanie wojennym",
+                      "Uchwała w 45. rocznicę wprowadzenia stanu wojennego",
+                      "Rozporządzenie Ministra Finansów w sprawie zezwoleń"]),
+                  "vestnesis.lv": rss([("Par ārkārtējās situācijas izsludināšanu", None),
+                                       ("Par ārkārtējo un pilnvaroto vēstnieku", None)])}
+        net = FakeNet(routes)
+        ev, info, extra = hlidac.src_gazettes(cfg, net, {})
+        got = sorted((e["source"], e.get("zeme"), e["level"]) for e in ev)
+        self.assertEqual(got, [("Dziennik Ustaw", "PL", 1), ("Dziennik Ustaw", "PL", 2), ("Latvijas Vēstnesis", "LV", 1)])
+        self.assertTrue(all(e["region"] == "EU" for e in ev))
+        self.assertIn("eli.gov.pl/eli/DU/2026/1500/ogl", next(e["url"] for e in ev if e["level"] == 2))
+        self.assertIn("Polsko 10 aktů", info)          # DU i MP
+        self.assertEqual(sorted({u.split("publisher=")[1].split("&")[0] for u, _ in net.calls if "sejm" in u}), ["DU", "MP"])
+
+    def test_radiation_hu(self):
+        ev, info, extra = hlidac.src_radiation_hu(CFG, FakeNet(east_routes()))
+        self.assertEqual(ev, [])
+        self.assertEqual((extra["zona"]["n"], extra["zona"]["max_name"]), (3, "Rétság"))
+        self.assertIn("medián 0.11 µSv/h", info)
+        one = okf_rss([("Paks", 900), ("Ózd", 110), ("Szekszárd", 120)])
+        self.assertEqual(hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": one}))[0], [])   # jedna sonda nestačí
+        two = okf_rss([("Paks", 2500), ("Szekszárd", 2100), ("Ózd", 110)])
+        ev, _, _ = hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": two}))
+        self.assertEqual([(e["region"], e["zeme"], e["level"]) for e in ev], [("EU", "HU", 2)])
+        with self.assertRaises(RuntimeError):
+            hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": rss([("x", None)])}))
+
+    def test_east_news_rules(self):
+        rules = hlidac.compile_rules(CFG)
+        def ids(title):
+            return {r["id"] for r in hlidac.match_rules(title, rules)}
+        self.assertIn("ee_kriis", ids("Ida-Virumaal kehtib õhuohu teade, varjuge siseruumides"))
+        self.assertNotIn("ee_kriis", ids("Päästeamet testib EE-ALARMi: lihvi üle enda ja pere varjumisoskused"))
+        self.assertIn("vychod_valka", ids("Riigikogu kuulutas välja sõjaseisukorra"))
+        self.assertIn("ro_mai", ids("RO-ALERT: dronă detectată în spațiul aerian al județului Tulcea"))
+        self.assertNotIn("ro_mai", ids("Ghidul suporterului: România – Polonia, 14 noiembrie 2026"))
+        self.assertIn("sk_obrana", ids("Narušenie vzdušného priestoru SR dronom"))
+        self.assertNotIn("sk_obrana", ids("Letecké dni IMAD 2026 navštívilo 70-tisíc ľudí"))
+        self.assertIn("hu_obrana", ids("Drón csapódott be a határ közelében"))
+        self.assertIn("fi_yle", ids("Viro sulkee Venäjän-vastaisen rajansa"))
+        self.assertIn("lt_lrt", ids("Balloons from Belarus close Vilnius airport again"))
+        self.assertIn("lv_obrana", ids("Drons ielidoja Latvijas gaisa telpā no Baltkrievijas"))
+        self.assertNotIn("lv_obrana", ids("Piekabes ar kravnesību līdz 750kg"))
+        self.assertIn("md_vlada", ids("Parlamentul a declarat stare de urgență pe teritoriul Republicii Moldova"))
+
+    def test_news_event_gets_country(self):
+        state = {}
+        net = FakeNet({"kriis.ee": rss([("Ida-Virumaal kehtib õhuohu teade", None)])})
+        cfg = {**CFG, "news": {**CFG["news"], "feeds": [f for f in CFG["news"]["feeds"] if f["id"] == "kriis_ee"]}}
+        ev, health = hlidac.run_news(cfg, net, state, NOW)
+        self.assertEqual([(e["region"], e.get("zeme"), e["level"]) for e in ev], [("EU", "EE", 1)])
+
+    def test_east_overview_and_map(self):
+        events = [hlidac.make_event("Kriis.ee", "EU", 1, "Õhuohu teade", eid="x")]
+        events[0]["zeme"] = "EE"
+        state = {"extras": {"sit": {"site": [{"code": "PL", "region": "EU", "operator": "PSE", "actual": 16300,
+                                               "forecast": 16350, "dev": 0.3, "level": 0}]},
+                            "vestniky": {"eli_pl": {"n": 24}}, "radiace_hu": {"zona": {"n": 80, "max": 0.2, "max_name": "Ózd", "level": 0}}},
+                 "sources": {"vestniky": {"ok": True}, "radiace_hu": {"ok": True},
+                             "news": {"feeds": {"kriis_ee": {"ok": True, "info": "100 titulků"}}}}}
+        out = {z["code"]: z for z in hlidac.east_overview(CFG, state, events)}
+        self.assertEqual(list(out)[:3], ["PL", "EE", "LV"])
+        self.assertEqual(out["EE"]["level"], 1)
+        self.assertIn("Kriis.ee – krizový web vlády", [z["nazev"] for z in out["EE"]["zdroje"]])
+        self.assertIn("16,3 GW", out["PL"]["zdroje"][0]["info"])
+        self.assertIn("80 stanic", next(z["info"] for z in out["HU"]["zdroje"] if "Radiace" in z["nazev"]))
+        m = hlidac.europe_map(CFG, {}, [], events)
+        self.assertEqual(m["zeme"]["EE"]["level"], 1)
 
 if __name__ == "__main__":
     unittest.main()

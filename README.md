@@ -103,6 +103,12 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
   - **`zemetreseni_utocista`**: zemětřesení podle státních služeb IGN (Španělsko) a IPMA (Portugalsko), stejný otřes od obou se sloučí. Od `sledovat_od` (M4,5) → 🟡, od `pripravit_od` (M6) → 🟠.
   - Ve zprávách přibyly úřední kanály: DSN (španělské krizové řízení – svolání Comité de Situación), INCIBE-CERT a irský NCSC (kybernetické útoky na stát).
   - Radiaci v zemích útočišť zatím hlídat nejde: španělská CSN, portugalská RADNET ani irská EPA nezveřejňují aktuální dávkový příkon strojově.
+- **Východní křídlo NATO** (`vychod`): Polsko, Estonsko, Lotyšsko, Litva, Finsko, Moldavsko, Rumunsko, Slovensko a Maďarsko. Úřední hlášení zvedají oblast Evropa/NATO (počítá se do stupně doma) a obarví zemi na mapě Evropy. V Signálech je sekce *Východní křídlo – státní zdroje* s přehledem, co se u které země hlídá a jestli to odpovídá.
+  - Elektrická síť (`sit_utocista.systemy` s `region: EU`): PSE (Polsko) a Elering (Estonsko) proti své předpovědi, Transelectrica (Rumunsko) proti vlastnímu normálu ze stejné denní doby a stejného typu dne, protože předpověď nezveřejňuje (normál se sbírá asi týden; prahy 25 % / 45 %).
+  - Věstníky (`vestniky.eli_pl`, `vestniky.vestnesis_lv`): Dziennik Ustaw a Monitor Polski přes ELI API Sejmu (zavedení výjimečného nebo válečného stavu, mobilizace; výročí stanného práva 1981 a novely zákonů se ignorují) a poslední číslo Latvijas Vēstnesis.
+  - **`radiace_hu`**: dávkový příkon z asi 80 stanic maďarské civilní ochrany (Paks). Aspoň 2 stanice nad 0,6 µSv/h → 🟡, nad 2 µSv/h → 🟠. Ukazuje se i v sekci Radiace.
+  - Úřední kanály ve zprávách s pravidly jen pro své kanály: krizový web estonské vlády a Riigikogu, lotyšské ministerstvo obrany a provozovatel sítě AST, moldavská vláda, rumunské ministerstvo vnitra, slovenské ministerstvo obrany a úřad vlády, maďarské ministerstvo obrany a civilní ochrana. Válečný stav nebo všeobecná mobilizace v kterékoli z nich → 🟠.
+  - Litevské a finské státní weby i polský gov.pl z GitHubu odmítají spojení (403 nebo nedostupné), Fingrid chce klíč. U Litvy a Finska se proto hlídá veřejnoprávní LRT a Yle; na vlastním serveru jde přidat i státní kanály.
 - **`notify.repeat_level3_minutes`**: jak často opakovat upozornění, dokud trvá 🔴 (0 = vypnuto).
 - **`notify.min_level`**: od jakého stupně posílat upozornění (výchozí 1).
 
@@ -133,6 +139,10 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 | ANEPC (přes fogos.pt) | velké zásahy portugalské civilní ochrany (požáry, povodně) |
 | IGN, IPMA | zemětřesení ve Španělsku a Portugalsku |
 | DSN, INCIBE-CERT, NCSC Irsko | krizové řízení Španělska a kybernetické útoky (pravidla zpráv) |
+| PSE, Elering, Transelectrica | elektrická síť Polska, Estonska a Rumunska |
+| ELI API Sejmu, Latvijas Vēstnesis | výjimečný a válečný stav nebo mobilizace v Polsku a Lotyšsku |
+| BM OKF (katasztrofavedelem.hu) | radiace v Maďarsku, oznámení civilní ochrany |
+| Kriis.ee, Riigikogu, mod.gov.lv, AST, gov.md, mai.gov.ro, mosr.sk, vlada.gov.sk, honvedelem.hu, LRT, Yle | krizová a bezpečnostní hlášení zemí východního křídla |
 | Natural Earth (world-atlas) | podklad mapy v dashboardu (`web/mapa.json`, volné dílo) |
 | ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC, MAAE, SÚJB, DSN, INCIBE-CERT, NCSC Irsko | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
 

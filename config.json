@@ -398,6 +398,84 @@
         "id": "ncsc_ie",
         "name": "NCSC Irsko",
         "url": "https://www.ncsc.gov.ie/news/alerts.rss"
+      },
+      {
+        "id": "kriis_ee",
+        "name": "Kriis.ee – krizový web vlády",
+        "url": "https://www.kriis.ee/rss-feeds/rss.xml",
+        "zeme": "EE"
+      },
+      {
+        "id": "riigikogu",
+        "name": "Riigikogu (parlament)",
+        "url": "https://www.riigikogu.ee/en/feed/",
+        "zeme": "EE"
+      },
+      {
+        "id": "lv_mod",
+        "name": "Ministerstvo obrany",
+        "url": "https://www.mod.gov.lv/lv/rss.xml",
+        "zeme": "LV"
+      },
+      {
+        "id": "lv_ast",
+        "name": "AST – přenosová soustava",
+        "url": "https://www.ast.lv/lv/rss.xml",
+        "zeme": "LV"
+      },
+      {
+        "id": "lrt_en",
+        "name": "LRT (veřejnoprávní)",
+        "url": "https://www.lrt.lt/en/news-in-english?rss",
+        "zeme": "LT"
+      },
+      {
+        "id": "yle_en",
+        "name": "Yle News (veřejnoprávní)",
+        "url": "https://yle.fi/rss/news",
+        "zeme": "FI"
+      },
+      {
+        "id": "yle_fi",
+        "name": "Yle Uutiset (veřejnoprávní)",
+        "url": "https://yle.fi/rss/uutiset/paauutiset",
+        "zeme": "FI"
+      },
+      {
+        "id": "md_gov",
+        "name": "Vláda Moldavska",
+        "url": "https://gov.md/ro/rss.xml",
+        "zeme": "MD"
+      },
+      {
+        "id": "ro_mai",
+        "name": "Ministerstvo vnitra",
+        "url": "https://www.mai.gov.ro/feed/",
+        "zeme": "RO"
+      },
+      {
+        "id": "sk_mosr",
+        "name": "Ministerstvo obrany SR",
+        "url": "https://www.mosr.sk/data/rss/aktuality.xml",
+        "zeme": "SK"
+      },
+      {
+        "id": "sk_vlada",
+        "name": "Úrad vlády SR",
+        "url": "https://www.vlada.gov.sk/rss/",
+        "zeme": "SK"
+      },
+      {
+        "id": "hu_honved",
+        "name": "Ministerstvo obrany",
+        "url": "https://honvedelem.hu/rss.xml",
+        "zeme": "HU"
+      },
+      {
+        "id": "hu_okf",
+        "name": "Civilní ochrana BM OKF",
+        "url": "https://www.katasztrofavedelem.hu/10463/RSS_kozlemenyek",
+        "zeme": "HU"
       }
     ],
     "rules": [
@@ -631,6 +709,141 @@
         "match": "ddos|denial of service|cyber ?attack|hacktivis|state[- ]sponsored|critical infrastructure|ransomware.{0,40}(hse|health|hospital)",
         "exclude": "",
         "note": "Úřední varování irského NCSC."
+      },
+      {
+        "id": "vychod_valka",
+        "label": "Válečný stav nebo všeobecná mobilizace na východním křídle",
+        "region": "EU",
+        "single": 2,
+        "confirmed": 2,
+        "feeds": [
+          "kriis_ee",
+          "riigikogu",
+          "lv_mod",
+          "lv_ast",
+          "lrt_en",
+          "yle_en",
+          "yle_fi",
+          "md_gov",
+          "ro_mai",
+          "sk_mosr",
+          "sk_vlada",
+          "hu_honved",
+          "hu_okf"
+        ],
+        "match": "sojaseisukor|state of war|martial law|karastavokl|stare de razboi|stare de asediu|vojnov[a-z]* stav|hadiallapot|sotatila|liikekannallepano|general mobili[sz]ation|mobilizare generala|vseobecn[a-z]* mobilizac|altalanos mozgositas|uldmobilisatsioon",
+        "exclude": "anniversary|rocznic|exercise|cvicen|gyakorlat|harjut|oppus|1981|aniversar",
+        "note": "Úřední zdroj země na východním křídle NATO. Ověř ve zprávách a sleduj, jestli se nepřidává článek 5.",
+        "advice": "Válečný stav v zemi NATO blízko nás. Zkontroluj zásoby, natankuj do plna a měj připravená zavazadla."
+      },
+      {
+        "id": "ee_kriis",
+        "label": "Estonsko – krizové varování",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "kriis_ee",
+          "riigikogu"
+        ],
+        "match": "ohuoht|ohuohu|ohurund|droonioht|raketioht|varjuge|varju kohe|erakorral[a-z]* seisukor|eriolukor[a-z]* (valja|kehtest)|mobilisatsioon|piiri sulge|suleb piiri|piiripunkt[a-z]* suletakse|state of emergency|mobili[sz]ation|border.{0,20}clos|airspace.{0,30}violat",
+        "exclude": "test|harjut|oppus|soovita|nouand|valmistu|kuul|exercise|drill",
+        "note": "Úřední krizový web estonské vlády nebo parlament."
+      },
+      {
+        "id": "lv_obrana",
+        "label": "Lotyšsko – bezpečnostní incident",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "lv_mod",
+          "lv_ast"
+        ],
+        "match": "dron[a-z]* .{0,40}(gaisa telp|robez|nokrit|uzbruk|ielidoj)|gaisa telp[a-z]* (parkap|aizskar)|robez[a-z]* .{0,30}(incident|slegs)|mobilizacij[a-z]* izsludin|iznemuma stavokl|uzbrukum|sabotaz|kabel[a-z]* .{0,30}(bojat|parrauts)|energosistem[a-z]* avarij|atslegum",
+        "exclude": "iepirk|apkop|remont|iegade|konkurs|piegade|planot",
+        "note": "Úřední zdroj Lotyšska (ministerstvo obrany, provozovatel sítě)."
+      },
+      {
+        "id": "lt_lrt",
+        "label": "Litva – bezpečnostní incident",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "lrt_en"
+        ],
+        "match": "(drone|balloon)[a-z]* .{0,60}(airspace|vilnius|airport|lithuania|border)|airspace.{0,40}(violat|clos)|border.{0,30}(clos|shut)|state of emergency|martial law|mobili[sz]ation|air raid|sabotage",
+        "exclude": "exercise|drill|training|anniversary|hybrid warfare in europe",
+        "note": "Litevské státní weby z GitHubu nejdou – zpráva veřejnoprávní LRT, ověř."
+      },
+      {
+        "id": "fi_yle",
+        "label": "Finsko – bezpečnostní incident",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "yle_en",
+          "yle_fi"
+        ],
+        "match": "sulke[a-z]* .{0,40}rajan|raja[a-z]* (suljet|sulke)|suljetaan raja|ilmatila[a-z]* loukk|valmiuslak|poikkeusolo|droon[a-z]* .{0,40}(havai|suomen|ilmatila|rajal)|border.{0,30}(clos|shut)|airspace.{0,30}violat|emergency powers|state of emergency|drone[a-z]* .{0,40}(finland|finnish|airspace|airport|border)",
+        "exclude": "exercise|drill|harjoitus|anniversary|vuosipaiv",
+        "note": "Zpráva finské veřejnoprávní Yle (i o sousedních zemích), ověř."
+      },
+      {
+        "id": "md_vlada",
+        "label": "Moldavsko – mimořádná situace",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "md_gov"
+        ],
+        "match": "star[a-z]* de urgenta|drona|drone|spatiul aerian|alerta aeriana|mobilizare|stare de asediu",
+        "exclude": "exercitiu|simulare|aniversar|antrenament",
+        "note": "Tisková zpráva moldavské vlády."
+      },
+      {
+        "id": "ro_mai",
+        "label": "Rumunsko – drony nebo mimořádná situace",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "ro_mai"
+        ],
+        "match": "ro-alert|alerta aeriana|drona|drone|adapost|stare de urgenta|stare de asediu|mobilizare|spatiul aerian",
+        "exclude": "exercitiu|simulare|test|suporter|aniversar",
+        "note": "Úřední zpráva rumunského ministerstva vnitra."
+      },
+      {
+        "id": "sk_obrana",
+        "label": "Slovensko – narušení vzdušného prostoru nebo mimořádný stav",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "sk_mosr",
+          "sk_vlada"
+        ],
+        "match": "narusen[a-z]* vzdusn|vzdusn[a-z]* priestor[a-z]* .{0,20}narus|dron[a-z]* .{0,40}(narus|preniko|dopad|zostrel|nad uzem|uzem[a-z]* sr)|mobilizac|vynimocn[a-z]* stav|nudzov[a-z]* stav|stav ohrozenia",
+        "exclude": "cvicen|vystav|letecke dni|konferenci|vyroci|dualn|triedu",
+        "note": "Úřední zpráva slovenské vlády nebo ministerstva obrany."
+      },
+      {
+        "id": "hu_obrana",
+        "label": "Maďarsko – narušení vzdušného prostoru nebo poplach",
+        "region": "EU",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "hu_honved",
+          "hu_okf"
+        ],
+        "match": "legter[a-z]* (megsert|sert)|dron[a-z]* .{0,40}(legter|hatar|becsapod|lezuhan|talal)|mozgositas|szuksegallapot|lakossag[a-z]* riaszt|legiriad|legiriaszt|sugar[a-z]* .{0,30}(emelked|szennyez)|paks.{0,40}(uzemzavar|baleset|esemeny)",
+        "exclude": "gyakorlat|teszt|probariaszt|szunyog|nyilt nap",
+        "note": "Úřední zpráva maďarského ministerstva obrany nebo civilní ochrany."
       }
     ]
   },
@@ -993,7 +1206,7 @@
   },
   "sit_utocista": {
     "enabled": true,
-    "pozn": "Skutečná spotřeba proti předpovědi provozovatele sítě. Propad o 15 % = Sleduj, o 35 % = Připrav se (oba poslední body). Portugalsko je v jedné synchronní síti se Španělskem – rozsáhlý výpadek ukáže REE; REN real-time data strojově nezveřejňuje.",
+    "pozn": "Skutečná spotřeba proti předpovědi provozovatele (u Transelectricy proti vlastnímu normálu ze stejné denní doby, předpověď nezveřejňuje). Propad o 15 % = Sleduj, o 35 % = Připrav se (oba poslední body). Útočiště: REE a EirGrid; východní křídlo: PSE (Polsko), Elering (Estonsko), Transelectrica (Rumunsko) – zvedá oblast Evropa/NATO. Portugalsko je v jedné synchronní síti se Španělskem. Fingrid (Finsko) chce klíč, litevský Litgrid a lotyšský AST data strojově nedávají.",
     "pokles_pct": [
       15,
       35
@@ -1010,16 +1223,45 @@
         "region": "IE",
         "name": "Irsko",
         "oblast": "ROI"
+      },
+      {
+        "typ": "pse",
+        "region": "EU",
+        "zeme": "PL",
+        "name": "Polsko"
+      },
+      {
+        "typ": "elering",
+        "region": "EU",
+        "zeme": "EE",
+        "name": "Estonsko"
+      },
+      {
+        "typ": "transelectrica",
+        "region": "EU",
+        "zeme": "RO",
+        "name": "Rumunsko",
+        "pokles_pct": [
+          25,
+          45
+        ]
       }
     ]
   },
   "vestniky": {
     "enabled": true,
-    "pozn": "BOE = španělský úřední věstník (vyhlášení stavu alarm/výjimečného stavu, mobilizace). Oireachtas = návrhy zákonů irského parlamentu (zákony o mimořádných pravomocech). Portugalský Diário da República nemá strojové rozhraní – vyhlášení estado de emergência hlídají zprávy RTP.",
+    "pozn": "BOE = španělský úřední věstník (vyhlášení stavu alarm/výjimečného stavu, mobilizace). Oireachtas = návrhy zákonů irského parlamentu (zákony o mimořádných pravomocech). Portugalský Diário da República nemá strojové rozhraní – vyhlášení estado de emergência hlídají zprávy RTP. Polsko: Dziennik Ustaw a Monitor Polski přes ELI API Sejmu (výjimečný a válečný stav, mobilizace; výročí stanného práva 1981 se ignorují). Lotyšsko: poslední číslo Latvijas Vēstnesis (mimořádná situace, výjimečný stav, mobilizace).",
     "boe": true,
     "oireachtas": true,
     "oireachtas_dni": 14,
-    "drzet_dni": 7
+    "drzet_dni": 7,
+    "eli_pl": true,
+    "eli_vydani": [
+      "DU",
+      "MP"
+    ],
+    "eli_dni": 7,
+    "vestnesis_lv": true
   },
   "anepc": {
     "enabled": true,
@@ -1054,6 +1296,59 @@
       36.8,
       -6.9,
       42.2
+    ]
+  },
+  "radiace_hu": {
+    "enabled": true,
+    "pozn": "Dávkový příkon z asi 80 stanic maďarské civilní ochrany (u Paksu je jaderná elektrárna). Aspoň `min_stanic` nad `warn_nsvh` = Sleduj, nad `alarm_nsvh` = Připrav se. Běžné pozadí je 80–200 nSv/h.",
+    "url": "https://www.katasztrofavedelem.hu/10464/RSS_hattersugarzas",
+    "warn_nsvh": 600,
+    "alarm_nsvh": 2000,
+    "min_stanic": 2,
+    "region": "EU",
+    "zeme": "HU"
+  },
+  "vychod": {
+    "pozn": "Státní zdroje zemí východního křídla NATO. Úřední vyhlášení zvedají oblast Evropa/NATO a obarví zemi na mapě. Litevské a finské státní weby i polský gov.pl odmítají přístup z cloudu (GitHub), proto se u nich hlídá veřejnoprávní LRT a Yle.",
+    "zeme": [
+      {
+        "code": "PL",
+        "name": "Polsko"
+      },
+      {
+        "code": "EE",
+        "name": "Estonsko"
+      },
+      {
+        "code": "LV",
+        "name": "Lotyšsko"
+      },
+      {
+        "code": "LT",
+        "name": "Litva",
+        "pozn": "Litevské státní weby z GitHubu nejdou, hlídá se veřejnoprávní LRT."
+      },
+      {
+        "code": "FI",
+        "name": "Finsko",
+        "pozn": "Finské státní weby z GitHubu nejdou a Fingrid chce klíč, hlídá se veřejnoprávní Yle."
+      },
+      {
+        "code": "MD",
+        "name": "Moldavsko"
+      },
+      {
+        "code": "RO",
+        "name": "Rumunsko"
+      },
+      {
+        "code": "SK",
+        "name": "Slovensko"
+      },
+      {
+        "code": "HU",
+        "name": "Maďarsko"
+      }
     ]
   }
 }
