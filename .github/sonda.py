@@ -15,11 +15,8 @@ d14 = (now - timedelta(days=14)).strftime("%Y-%m-%d")
 UA = "KrizovyHlidac-sonda/1.0 (+https://github.com/)"
 J = {"Accept": "application/json"}
 URLS = [
-    ("epa_meas", "https://data.epa.ie/radmon/api/v1/measurements?per_page=3", None),
-    ("epa_stations", "https://data.epa.ie/radmon/api/v1/stations", None),
-    ("epa_swagger", "https://data.epa.ie/radmon/swagger/", "JS"),
-    ("epa_swjson1", "https://data.epa.ie/radmon/swagger.json", None),
-    ("epa_swjson2", "https://data.epa.ie/radmon/api/v1/swagger.json", None),
+    ("epa_meas", "https://data.epa.ie/radmon/api/v1/measurements?per_page=1", None),
+    ("epa_swagger", "https://data.epa.ie/radmon/swagger/", "URLS"),
     ("ign_sismo", "https://www.ign.es/ign/RssTools/sismologia.xml", "ITEM"),
     ("ren_home", "https://datahub.ren.pt/pt/", "CTX"),
 ]
@@ -31,7 +28,7 @@ out = {"cas": now.isoformat(), "vysledky": {}}
 for key, url, hdr in URLS:
     r = {"url": url}
     try:
-        h = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"} if hdr in ("MOZ", "JS") else {"User-Agent": UA, **(hdr or {})}
+        h = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"} if hdr in ("MOZ", "JS", "CTX", "ITEM", "URLS") else {"User-Agent": UA, **(hdr or {})}
         req = urllib.request.Request(url, headers=h)
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read(3_000_000)
@@ -48,7 +45,7 @@ for key, url, hdr in URLS:
         continue
     txt = raw.decode("utf-8", "replace")
     r["delka"] = len(raw)
-    r["zacatek"] = txt[:1500]
+    r["zacatek"] = txt[:4000]
     if len(txt) > 1500:
         r["konec"] = txt[-600:]
     hints = []
@@ -70,6 +67,8 @@ for key, url, hdr in URLS:
         r["tvar"] = shape(js)
     except Exception:
         pass
+    if hdr == "URLS":
+        r["urls"] = re.findall(r"""(?:url|spec)[a-zA-Z]*\s*[:=]\s*["'`][^"'`]+["'`]""", txt)[:20]
     if hdr == "ITEM":
         r["polozky"] = re.findall(r"<item>.*?</item>", txt, re.S)[:2]
     if hdr == "CTX":
