@@ -7,61 +7,43 @@ d = now.strftime("%Y-%m-%d")
 d1 = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 d7 = (now - timedelta(days=7)).strftime("%Y-%m-%d")
 URLS = [
- # Polsko
- ("pl_eli_openapi", "https://api.sejm.gov.pl/eli/openapi"),
- ("pl_eli_search", f"https://api.sejm.gov.pl/eli/acts/search?publisher=DU&year=2026&limit=3&sortBy=promulgation&sortDir=desc"),
- ("pl_eli_year", "https://api.sejm.gov.pl/eli/acts/DU/2026"),
- ("pl_sejm_prints", "https://api.sejm.gov.pl/sejm/term10/prints?limit=3&sort_by=-documentDate"),
- ("pl_pse_root", "https://api.raporty.pse.pl/api/"),
- ("pl_pse_kse", f"https://api.raporty.pse.pl/api/kse-load?$filter=business_date%20eq%20%27{d}%27&$first=3"),
- ("pl_pse_hiswlk", f"https://api.raporty.pse.pl/api/his-wlk-cal?$filter=business_date%20eq%20%27{d}%27&$first=2"),
- ("pl_rcb", "https://www.gov.pl/web/rcb"),
- ("pl_rcb_rss", "https://www.gov.pl/web/rcb/rss"),
- ("pl_mon", "https://www.gov.pl/web/obrona-narodowa"),
- # Estonsko
- ("ee_elering_docs", "https://dashboard.elering.ee/v3/api-docs"),
- ("ee_elering_plan", f"https://dashboard.elering.ee/api/system/with-plan?start={d1}T00:00:00.000Z&end={d}T23:59:59.999Z"),
- ("ee_kriis", "https://www.kriis.ee/"),
- ("ee_valitsus", "https://valitsus.ee/en/news"),
- ("ee_kaitse", "https://kaitseministeerium.ee/en/news"),
- ("ee_paaste", "https://www.rescue.ee/"),
- ("ee_rt", "https://www.riigiteataja.ee/"),
- ("ee_riigikogu", "https://www.riigikogu.ee/en/feed/"),
- # Lotyšsko
- ("lv_mod", "https://www.mod.gov.lv/"),
- ("lv_vestnesis", "https://www.vestnesis.lv/"),
- ("lv_vugd", "https://www.vugd.gov.lv/"),
- ("lv_mk", "https://www.mk.gov.lv/lv"),
- # Litva
- ("lt_kam", "https://kam.lt/"),
- ("lt_kam_feed", "https://kam.lt/feed/"),
- ("lt_lrv", "https://lrv.lt/lt/"),
- ("lt_pagd", "https://pagd.lrv.lt/"),
- # Finsko
- ("fi_vn", "https://valtioneuvosto.fi/ajankohtaista/tiedotteet"),
- ("fi_pv", "https://puolustusvoimat.fi/"),
- ("fi_112", "https://www.112.fi/"),
- ("fi_fingrid", "https://data.fingrid.fi/api/datasets/124/data?pageSize=2"),
- # Moldavsko
- ("md_gov", "https://gov.md/ro"),
- ("md_gov_rss", "https://gov.md/ro/rss.xml"),
- ("md_igsu", "https://dse.md/"),
- ("md_mai", "https://mai.gov.md/ro"),
- # Rumunsko
- ("ro_mapn", "https://www.mapn.ro/"),
- ("ro_gov", "https://gov.ro/ro"),
- ("ro_igsu", "https://www.igsu.ro/"),
+ ("ee_kriis_rss", "https://www.kriis.ee/rss-feeds/rss.xml"),
+ ("lv_vestnesis_jl", "https://www.vestnesis.lv/feed/JL"),
+ ("sk_mosr_rss", "https://www.mosr.sk/data/rss/aktuality.xml"),
+ ("sk_vlada_rss", "https://www.vlada.gov.sk/rss/"),
+ ("hu_honved_rss", "https://honvedelem.hu/rss.xml"),
+ ("hu_katved_src", "https://www.katasztrofavedelem.hu/10198/rss-forrasok-a-bm-okf-oldalan"),
+ ("hu_mk_feed", "https://magyarkozlony.hu/feed"),
  ("ro_transel", "https://www.transelectrica.ro/sen-filter"),
- # Slovensko
- ("sk_mosr", "https://www.mosr.sk/"),
- ("sk_vlada", "https://www.vlada.gov.sk/"),
- ("sk_minv", "https://www.minv.sk/"),
- ("sk_slovlex", "https://www.slov-lex.sk/"),
- # Maďarsko
- ("hu_kormany", "https://kormany.hu/"),
- ("hu_honved", "https://honvedelem.hu/"),
- ("hu_katved", "https://www.katasztrofavedelem.hu/"),
- ("hu_mk", "https://magyarkozlony.hu/"),
+ ("lt_etar", "https://www.e-tar.lt/portal/lt/index"),
+ ("lt_lrs", "https://www.lrs.lt/"),
+ ("lt_kariuomene", "https://kariuomene.lt/"),
+ ("lt_litgrid", "https://www.litgrid.eu/"),
+ ("lt_lrt_rss", "https://www.lrt.lt/naujienos?rss"),
+ ("lt_vrm", "https://vrm.lrv.lt/"),
+ ("fi_finlex_list", "https://opendata.finlex.fi/finlex/avoindata/v1/akn/fi/act/statute/list?format=json&page=1&limit=5&sortBy=dateIssued&startYear=2026&endYear=2026&langAndVersion=fin%40&typeStatute=act&categoryStatute=new-statute"),
+ ("fi_eduskunta", "https://www.eduskunta.fi/FI/rss-syotteet/Sivut/default.aspx"),
+ ("fi_raja", "https://raja.fi/"),
+ ("fi_fmi_cap", "https://alerts.fmi.fi/cap/feed/atom_fi-FI.xml"),
+ ("fi_yle_rss", "https://yle.fi/rss/uutiset/paauutiset"),
+ ("pl_bbn", "https://www.bbn.gov.pl/"),
+ ("pl_bbn_rss", "https://www.bbn.gov.pl/pl/rss"),
+ ("pl_wp", "https://www.wojsko-polskie.pl/"),
+ ("pl_eli_mp", "https://api.sejm.gov.pl/eli/acts/search?publisher=MP&pubDateFrom=2026-11-01&limit=3"),
+ ("pl_eli_du7", "https://api.sejm.gov.pl/eli/acts/search?publisher=DU&pubDateFrom=2026-11-08&limit=500"),
+ ("ro_mai_feed", "https://www.mai.gov.ro/feed/"),
+ ("ro_dsu", "https://www.dsu.mai.gov.ro/"),
+ ("ro_mapn_rss", "https://www.mapn.ro/rss.php"),
+ ("ro_cdep", "https://www.cdep.ro/"),
+ ("ro_sgg", "https://sgg.gov.ro/"),
+ ("lv_sargs", "https://www.sargs.lv/"),
+ ("lv_mod_rss", "https://www.mod.gov.lv/lv/rss.xml"),
+ ("lv_ast", "https://www.ast.lv/"),
+ ("md_parlament", "https://www.parlament.md/"),
+ ("md_moldelectrica", "https://moldelectrica.md/"),
+ ("ee_valitsus_rss", "https://valitsus.ee/rss.xml"),
+ ("ee_kaitse_rss", "https://kaitseministeerium.ee/et/rss.xml"),
+ ("ee_paaste_rss", "https://www.rescue.ee/rss"),
 ]
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 LINK = re.compile(r"""<link[^>]+type=["']application/(?:rss|atom)\+xml["'][^>]*>""", re.I)
@@ -81,7 +63,7 @@ def one(item):
     except Exception as e:
         r["chyba"] = f"{type(e).__name__}: {e}"[:200]; return key, r
     t = raw.decode("utf-8", "replace")
-    r["delka"] = len(raw); r["zacatek"] = re.sub(r"\s+", " ", t[:700])
+    r["delka"] = len(raw); r["zacatek"] = re.sub(r"\s+", " ", t[:700]) if key != "ro_transel" else t
     titles = re.findall(r"<title[^>]*>(.*?)</title>", t, re.S)
     if "<item" in t or "<entry" in t:
         r["polozek"] = t.count("<item") + t.count("<entry"); r["titulky"] = [re.sub(r"\s+", " ", x)[:120] for x in titles[:6]]
