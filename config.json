@@ -383,6 +383,21 @@
         "id": "sujb",
         "name": "SÚJB",
         "url": "https://sujb.gov.cz/aktualne/rss.xml"
+      },
+      {
+        "id": "dsn",
+        "name": "DSN (Seguridad Nacional)",
+        "url": "https://www.dsn.gob.es/es/rss.xml"
+      },
+      {
+        "id": "incibe",
+        "name": "INCIBE-CERT",
+        "url": "https://www.incibe.es/incibe-cert/alerta-temprana/avisos/feed"
+      },
+      {
+        "id": "ncsc_ie",
+        "name": "NCSC Irsko",
+        "url": "https://www.ncsc.gov.ie/news/alerts.rss"
       }
     ],
     "rules": [
@@ -577,6 +592,45 @@
         "match": "stav[a-z]* nouze[^.]{0,40}plyn|plyn[a-z]*[^.]{0,60}stav[a-z]* nouze|omezeni dodavek plynu|regulacni stup[a-z]*[^.]{0,30}plyn",
         "exclude": "predchazeni|ukonc|zrus|konci",
         "advice": "Plyn se může omezovat – měj záložní teplo a zásoby na 72 h. Blackout je pravděpodobnější, když chybí plyn pro elektrárny."
+      },
+      {
+        "id": "dsn_krize",
+        "label": "Krizové řízení Španělska (DSN)",
+        "region": "ES",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "dsn"
+        ],
+        "match": "comite de situacion|situacion de interes para la seguridad nacional|apagon|cero (electrico|energetico)|crisis[a-z ]{0,30}(energetic|electric|suministro)|ciberataque|emergencia nacional",
+        "exclude": "jornada|congreso|curso|conferencia|premio",
+        "note": "Úřední zpráva španělského Departamento de Seguridad Nacional – svolání krizového výboru bývá první oficiální signál."
+      },
+      {
+        "id": "kyber_es",
+        "label": "Kybernetický útok ve Španělsku (INCIBE-CERT)",
+        "region": "ES",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "incibe"
+        ],
+        "match": "ciberataque|ddos|denegacion de servicio|campana[a-z]* .{0,40}(prorus|hacktiv|masiv)|infraestructuras? critica",
+        "exclude": "",
+        "note": "Úřední varování španělského CERT."
+      },
+      {
+        "id": "kyber_ie",
+        "label": "Kybernetický útok v Irsku (NCSC)",
+        "region": "IE",
+        "single": 1,
+        "confirmed": 1,
+        "feeds": [
+          "ncsc_ie"
+        ],
+        "match": "ddos|denial of service|cyber ?attack|hacktivis|state[- ]sponsored|critical infrastructure|ransomware.{0,40}(hse|health|hospital)",
+        "exclude": "",
+        "note": "Úřední varování irského NCSC."
       }
     ]
   },
@@ -935,6 +989,69 @@
       {
         "id": "bbc"
       }
+    ]
+  },
+  "sit_utocista": {
+    "enabled": true,
+    "pozn": "Skutečná spotřeba proti předpovědi provozovatele sítě. Propad o 15 % = Sleduj, o 35 % = Připrav se (oba poslední body). Portugalsko je v jedné synchronní síti se Španělskem – rozsáhlý výpadek ukáže REE; REN real-time data strojově nezveřejňuje.",
+    "pokles_pct": [
+      15,
+      35
+    ],
+    "stara_data_min": 90,
+    "systemy": [
+      {
+        "typ": "ree",
+        "region": "ES",
+        "name": "Španělsko"
+      },
+      {
+        "typ": "eirgrid",
+        "region": "IE",
+        "name": "Irsko",
+        "oblast": "ROI"
+      }
+    ]
+  },
+  "vestniky": {
+    "enabled": true,
+    "pozn": "BOE = španělský úřední věstník (vyhlášení stavu alarm/výjimečného stavu, mobilizace). Oireachtas = návrhy zákonů irského parlamentu (zákony o mimořádných pravomocech). Portugalský Diário da República nemá strojové rozhraní – vyhlášení estado de emergência hlídají zprávy RTP.",
+    "boe": true,
+    "oireachtas": true,
+    "oireachtas_dni": 14,
+    "drzet_dni": 7
+  },
+  "anepc": {
+    "enabled": true,
+    "pozn": "Zásahy portugalské civilní ochrany ANEPC přes fogos.pt (ANEPC sama data mimo Portugalsko nezveřejňuje). Velký zásah = aspoň 150 lidí nebo 4 letadla nebo označený jako významný.",
+    "region": "PT",
+    "velky_zasah_lidi": 150,
+    "velky_zasah_letadel": 4,
+    "pripravit_lidi_celkem": 2500
+  },
+  "zemetreseni_utocista": {
+    "enabled": true,
+    "pozn": "Státní seismologické služby: IGN (Španělsko) a IPMA (Portugalsko). Pyrenejský poloostrov a Baleáry.",
+    "ign": true,
+    "ipma": true,
+    "dni": 7,
+    "min_mag": 2.5,
+    "sledovat_od": 4.5,
+    "pripravit_od": 6.0,
+    "drzet_hodin": 24,
+    "oblasti": [
+      [
+        -10.0,
+        35.8,
+        4.5,
+        44.0
+      ]
+    ],
+    "portugalsko_bbox": [
+      -9.8,
+      36.8,
+      -6.9,
+      42.2
     ]
   }
 }

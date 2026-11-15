@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -203,6 +204,95 @@ class FakeNet:
         raise OSError(f"no route for {url}")
 
 
+# ── útočiště: státní zdroje (formáty ověřené proti živým zdrojům 15. 11. 2026) ──
+
+def _now_min():
+    return datetime.now(timezone.utc).replace(second=0, microsecond=0)
+
+
+def ree_json(real, prev, step=5):
+    end = _now_min() - timedelta(minutes=5)
+    cet = timezone(timedelta(hours=1))
+    def vals(xs):
+        return [{"value": v, "percentage": 1, "datetime": (end - timedelta(minutes=step * (len(xs) - 1 - i)))
+                 .astimezone(cet).isoformat(timespec="milliseconds")} for i, v in enumerate(xs)]
+    inc = [{"type": t, "id": str(n), "attributes": {"title": t, "values": vals(xs)}}
+           for n, (t, xs) in enumerate((("Prevista", prev), ("Programada", prev), ("Real", real)))]
+    return json.dumps({"data": {"type": "Demanda nacional en tiempo real", "id": "dem15"}, "included": inc}).encode()
+
+
+def eir_json(field, points):
+    tz = hlidac._tz("Europe/Dublin", 0)
+    rows = [{"EffectiveTime": t.astimezone(tz).strftime("%d-%b-%Y %H:%M:%S"), "FieldName": field, "Region": "ROI", "Value": v}
+            for t, v in points]
+    return json.dumps({"ErrorMessage": None, "LastUpdated": "x", "Rows": rows, "Status": "Success"}).encode()
+
+
+def eir_routes(actual_vals, fc_val=5000):
+    """Skutečnost po 15 min končící před 20 min; předpověď po 30 min od teď dál."""
+    end = _now_min() - timedelta(minutes=20)
+    act = [(end - timedelta(minutes=15 * (len(actual_vals) - 1 - i)), v) for i, v in enumerate(actual_vals)]
+    start = _now_min().replace(minute=0 if _now_min().minute < 30 else 30)
+    fc = [(start + timedelta(minutes=30 * i), fc_val) for i in range(1, 6)]
+    return {"area=demandactual": eir_json("SYSTEM_DEMAND", act + [(end + timedelta(minutes=15), None)]),
+            "area=demandforecast": eir_json("DEMAND_FORECAST_VALUE", fc)}, act
+
+
+def boe_json(titles_by_section):
+    secs = []
+    for code, titles in titles_by_section.items():
+        items = [{"identificador": f"BOE-A-2026-{code}{n}", "control": "x", "titulo": t,
+                  "url_pdf": {"szBytes": "1", "texto": f"https://www.boe.es/{code}{n}.pdf"},
+                  "url_html": f"https://www.boe.es/diario_boe/txt.php?id=BOE-A-2026-{code}{n}"} for n, t in enumerate(titles)]
+        dep = [{"codigo": "1", "nombre": "JEFATURA DEL ESTADO", "epigrafe": {"nombre": "x", "item": items[0]}}] if items else []
+        if len(items) > 1:
+            dep.append({"codigo": "2", "nombre": "MINISTERIO", "item": items[1:]})
+        secs.append({"codigo": code, "nombre": f"Sección {code}", "departamento": dep})
+    return json.dumps({"status": {"code": "200", "text": "ok"}, "data": {"sumario": {
+        "metadatos": {"publicacion": "BOE"}, "diario": [{"numero": "284", "seccion": secs}]}}}).encode()
+
+
+def oir_json(titles):
+    return json.dumps({"head": {"counts": {"billCount": len(titles)}}, "results": [
+        {"bill": {"shortTitleEn": t + "\n", "billYear": "2026", "billNo": str(100 + n), "status": "Current"}}
+        for n, t in enumerate(titles)]}).encode()
+
+
+def fogos_json(incidents):
+    data = []
+    for n, (man, aerial, important, place) in enumerate(incidents):
+        data.append({"id": f"2026{n}", "dateTime": {"sec": int(datetime.now(timezone.utc).timestamp()) - 3600},
+                     "location": place, "district": place, "concelho": place, "man": man, "aerial": aerial, "terrain": 1,
+                     "natureza": "Incêndio Rural em Povoamento Florestal", "status": "Em Curso", "important": important})
+    return json.dumps({"success": True, "paginator": {"totalItems": len(data)}, "data": data}).encode()
+
+
+def ign_rss(quakes):
+    items = "".join(
+        f"<item><title>-Info.terremoto: {t:%d/%m/%Y %-H:%M:%S}</title><link>http://www.ign.es/q{n}</link>"
+        f"<description>Se ha producido un terremoto de magnitud {m} en {place} en la fecha {t:%d/%m/%Y %-H:%M:%S} "
+        f"en la siguiente localización: {lat},{lon}</description><geo:lat>{lat}</geo:lat><geo:long>{lon}</geo:long></item>"
+        for n, (m, place, t, lat, lon) in enumerate(quakes))
+    return (f'<?xml version="1.0" encoding="UTF-8"?><rss xmlns:geo="http://www.w3.org/2003/01/geo/wgs84_pos#" version="2.0">'
+            f"<channel><title>GeoRSS Sismología IGN</title>{items}</channel></rss>").encode()
+
+
+def ipma_json(quakes):
+    return json.dumps({"idArea": 7, "country": "PT", "owner": "IPMA", "data": [
+        {"magnitud": str(m), "obsRegion": place, "time": t.strftime("%Y-%m-%dT%H:%M:%S"), "lat": str(lat), "lon": str(lon),
+         "depth": 10, "magType": "L", "source": "IPMA"} for m, place, t, lat, lon in quakes]}).encode()
+
+
+def refuge_routes():
+    r, _ = eir_routes([4000, 4010, 4020])
+    return {"apidatos.ree.es": ree_json([27000, 27100, 27200], [27200, 27150, 27250]), **r,
+            "boe.es/datosabiertos": boe_json({"1": ["Tabaco. Precios"], "3": ["Sentencia sobre el Real Decreto por el que se declara el estado de alarma"]}),
+            "api.oireachtas.ie": oir_json(["Planning and Development (Wind Turbines) Bill 2026"]),
+            "api.fogos.pt": fogos_json([(4, 0, False, "Braga"), (12, 1, False, "Leiria")]),
+            "ign.es/ign/RssTools": ign_rss([]), "api.ipma.pt": ipma_json([]),
+            "dsn.gob.es": rss([]), "incibe.es": rss([]), "ncsc.gov.ie": rss([])}
+
+
 def base_routes():
     return {
         "dashboard/146120000000": NINA_LEIPZIG,
@@ -230,6 +320,7 @@ def base_routes():
         "psp.cz/eknih": psp_zip([(1, "Vládní návrh zákona o daních")]),
         "easa.europa.eu": easa_rss(["Airspace of Iran", "Airspace of Ukraine"]),
         "seismicportal.eu": b"",
+        **refuge_routes(),
     }
 
 
@@ -1038,6 +1129,120 @@ class TestGieErrors(unittest.TestCase):
         mem["time"] = hlidac.iso(hlidac.utcnow() - timedelta(hours=13))  # moc stará data → chyba
         with self.assertRaises(hlidac.GieTemporary):
             hlidac.src_gas(CFG, FakeNet({"agsi.gie.eu": self.WRAP}), mem)
+
+
+
+class TestRefugeSources(unittest.TestCase):
+    def test_grid_ree_normal_and_blackout(self):
+        ev, info, extra = hlidac.src_grid_refuges(CFG, FakeNet(refuge_routes()), {})
+        self.assertEqual(ev, [])
+        es = next(x for x in extra["site"] if x["code"] == "ES")
+        self.assertEqual((es["level"], es["operator"], es["actual"]), (0, "REE", 27200))
+        self.assertIn("ES 27.2 GW", info)
+        ie = next(x for x in extra["site"] if x["code"] == "IE")
+        self.assertEqual(ie.get("pozn"), "předpověď se teprve sbírá")     # EirGrid dává předpověď jen dopředu
+        # propad jen v posledním bodě = možná chyba dat, nic
+        r = {**refuge_routes(), "apidatos.ree.es": ree_json([27000, 27100, 9000], [27200, 27150, 27250])}
+        ev, _, _ = hlidac.src_grid_refuges(CFG, FakeNet(r), {})
+        self.assertEqual(ev, [])
+        # dva body hluboko pod předpovědí = blackout
+        r["apidatos.ree.es"] = ree_json([27000, 11000, 10500], [27200, 27150, 27250])
+        ev, info, extra = hlidac.src_grid_refuges(CFG, FakeNet(r), {})
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("ES", 2)])
+        self.assertIn("pod předpovědí", ev[0]["title"])
+        self.assertTrue(ev[0].get("advice"))
+        # nula = výpadek dat, ne sítě
+        r["apidatos.ree.es"] = ree_json([27000, 0, 0], [27200, 27150, 27250])
+        self.assertEqual(hlidac.src_grid_refuges(CFG, FakeNet(r), {})[0], [])
+
+    def test_grid_eirgrid_uses_stored_forecast(self):
+        mem = {}
+        routes, act = eir_routes([4000, 3300, 3200])
+        fc = mem.setdefault("eirgrid_fc", {}).setdefault("ROI", {})
+        for t, _ in act:                                   # předpověď uložená z dřívějších běhů
+            slot = t.replace(minute=0 if t.minute < 30 else 30)
+            fc[hlidac.iso(slot)] = 4100
+        r = {**refuge_routes(), **routes}
+        ev, info, extra = hlidac.src_grid_refuges(CFG, FakeNet(r), mem)
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("IE", 1)])      # o 20–22 % pod předpovědí
+        self.assertTrue(len(mem["eirgrid_fc"]["ROI"]) > 3)                           # nová předpověď se uložila
+
+    def test_grid_errors(self):
+        r = {**refuge_routes(), "apidatos.ree.es": b'{"errors": [{"detail": "x"}]}'}
+        ev, info, extra = hlidac.src_grid_refuges(CFG, FakeNet(r), {})
+        self.assertIn("nefunguje: Španělsko", info)
+        self.assertEqual([x["code"] for x in extra["site"]], ["IE"])
+        r["area=demandactual"] = b"<html>"
+        with self.assertRaises(RuntimeError):
+            hlidac.src_grid_refuges(CFG, FakeNet(r), {})
+
+    def test_gazettes(self):
+        mad = hlidac.utcnow().astimezone(hlidac._tz("Europe/Madrid")).date()
+        today, yday = f"sumario/{mad:%Y%m%d}", f"sumario/{mad - timedelta(days=1):%Y%m%d}"
+        nf = urllib.error.HTTPError("u", 404, "Not Found", {}, None)
+        decl = "Real Decreto 9/2026, de 14 de noviembre, por el que se declara el estado de alarma para la gestión de la crisis ocasionada por el apagón"
+        routes = {today: nf, yday: boe_json({"1": ["Tabaco. Precios", decl],
+                                             "T": ["Pleno. Sentencia 1/2026 sobre el Real Decreto por el que se declara el estado de alarma"]}),
+                  "api.oireachtas.ie": oir_json(["Planning (Wind Turbines) Bill 2026", "Emergency Powers Bill 2026"])}
+        net = FakeNet(routes)
+        mem = {}
+        ev, info, extra = hlidac.src_gazettes(CFG, net, mem)
+        self.assertEqual(sorted((e["region"], e["level"]) for e in ev), [("ES", 2), ("IE", 2)])
+        es = next(e for e in ev if e["region"] == "ES")
+        self.assertIn("estado de alarma", es["title"])
+        self.assertIn("txt.php", es["url"])
+        self.assertIn("BOE 3 položek", info)
+        self.assertTrue(all(h.get("Accept") == "application/json" for u, h in net.calls if "boe.es" in u))
+        # zachycené vyhlášení drží 7 dní, i když už v souhrnu není
+        calm = {today: nf, yday: nf, "api.oireachtas.ie": oir_json([])}
+        ev, info, _ = hlidac.src_gazettes(CFG, FakeNet(calm), mem)
+        self.assertEqual(len(ev), 2)
+        self.assertIn("dnes ani včera nevyšel", info)
+        for a in mem["active"].values():
+            a["first"] = hlidac.iso(hlidac.utcnow() - timedelta(days=8))
+        self.assertEqual(hlidac.src_gazettes(CFG, FakeNet(calm), mem)[0], [])
+        with self.assertRaises(RuntimeError):
+            hlidac.src_gazettes(CFG, FakeNet({today: b'{"data": {}}', yday: nf, "api.oireachtas.ie": b"[]"}), {})
+
+    def test_anepc(self):
+        ev, info, extra = hlidac.src_anepc(CFG, FakeNet(refuge_routes()))
+        self.assertEqual((ev, extra["n"], extra["lidi"]), ([], 2, 16))
+        big = fogos_json([(320, 6, True, "Leiria"), (180, 2, False, "Viseu"), (5, 0, False, "Braga")])
+        ev, info, extra = hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": big}))
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("PT", 1)])
+        self.assertIn("Leiria (320 lidí, 6 letadel)", ev[0]["title"])
+        self.assertEqual(extra["zasahy"][0]["misto"], "Leiria")
+        huge = fogos_json([(900, 8, True, "Leiria"), (800, 5, True, "Viseu"), (900, 3, True, "Guarda")])
+        self.assertEqual(hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": huge}))[0][0]["level"], 2)
+        with self.assertRaises(RuntimeError):
+            hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": b'{"success": false}'}))
+
+    def test_seismo(self):
+        now = hlidac.utcnow().replace(microsecond=0)
+        t1, t2 = now - timedelta(hours=2), now - timedelta(hours=5)
+        ign = ign_rss([(4.8, "SANTA FE.GR", t1, 37.19, -3.72), (3.0, "LISBOA", t2, 38.71, -9.14),
+                       (4.6, "ATLÁNTICO-MARRUECOS", t1, 32.47, -12.29)])
+        ipma = ipma_json([(3.2, "Lisboa", t2 + timedelta(seconds=40), 38.75, -9.10), (-99.0, "x", t1, 39.0, -8.0)])
+        ev, info, extra = hlidac.src_seismo_refuges(CFG, FakeNet({"ign.es/ign/RssTools": ign, "api.ipma.pt": ipma}))
+        self.assertEqual([(e["region"], e["level"]) for e in ev], [("ES", 1)])
+        self.assertIn("M4.8", ev[0]["title"])
+        self.assertEqual([(q["region"], q["mag"]) for q in extra["quakes"]], [("ES", 4.8), ("PT", 3.2)])   # duplicita sloučena
+        self.assertIn("IGN 3", info)
+        ev, info, _ = hlidac.src_seismo_refuges(CFG, FakeNet({"ign.es/ign/RssTools": ign, "api.ipma.pt": b"<html>"}))
+        self.assertIn("nefunguje: IPMA", info)
+        with self.assertRaises(RuntimeError):
+            hlidac.src_seismo_refuges(CFG, FakeNet({"ign.es/ign/RssTools": b"<x", "api.ipma.pt": b"{}"}))
+
+    def test_refuge_news_rules(self):
+        rules = hlidac.compile_rules(CFG)
+        def ids(title):
+            return {r["id"] for r in hlidac.match_rules(title, rules)}
+        self.assertIn("dsn_krize", ids("El Comité de Situación se reúne tras el apagón"))
+        self.assertNotIn("dsn_krize", ids("XX Jornadas STIC: ciberataque y amenaza cuántica"))
+        self.assertIn("kyber_es", ids("Campaña de ataques DDoS prorrusos contra organismos públicos"))
+        self.assertNotIn("kyber_es", ids("Múltiples vulnerabilidades en productos de Check Point"))
+        self.assertIn("kyber_ie", ids("DDoS attacks targeting Irish government websites"))
+        self.assertNotIn("kyber_ie", ids("Critical vulnerabilities in Citrix NetScaler Gateway & ADC"))
 
 
 if __name__ == "__main__":

@@ -96,6 +96,13 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 - **`nukib`, `psp`, `easa`**: úřední signály – varování NÚKIB před útoky, nové sněmovní tisky o stavu ohrožení státu nebo mobilizaci (první běh si zapamatuje výchozí stav a staré tisky nehlásí) a bulletiny EASA o konfliktních zónách v Evropě.
 - **`mapa`**: zpravodajské kanály pro mapu Evropy (`feeds`, u národních kanálů `zeme` = kam patří zpráva bez názvu země). Země se poznávají podle slovníku `zeme.json` (názvy, přídavná jména a města v cs/de/en/es/pt). Mapa sama upozornění neposílá. Od `zluta_od_zminek` zmínek za `okno_hodin` se země obarví 🟡.
 - **`zemetreseni`**: otřesy v okolí domova (EMSC). Výchozí výřez je Chebsko a Vogtland, nejaktivnější seismická oblast Česka.
+- **Státní zdroje útočišť** (Španělsko, Portugalsko, Irsko – obdoba toho, co se hlídá pro Česko a Německo):
+  - **`sit_utocista`**: elektrická síť. Skutečná spotřeba proti předpovědi provozovatele (REE pro Španělsko, EirGrid pro Irsko). Propad o `pokles_pct` (15 % / 35 %) ve dvou posledních měřeních → 🟡 / 🟠. Nulová hodnota se bere jako výpadek dat, ne sítě. Portugalsko je ve stejné synchronní síti se Španělskem a REN svá data v reálném čase strojově nezveřejňuje. EirGrid dává předpověď jen dopředu, hlídač si ji proto ukládá a porovnává se skutečností z dalších běhů (první hodinu po spuštění píše „předpověď se teprve sbírá“).
+  - **`vestniky`**: úřední věstník BOE (oddíl I, vyhlášení stavu alarm, výjimečného stavu nebo mobilizace; rozsudky o dřívějších stavech se ignorují) a návrhy zákonů irského parlamentu (Oireachtas – zákony o mimořádných pravomocech). Zachycené vyhlášení drží `drzet_dni`. Portugalský Diário da República strojové rozhraní nemá, vyhlášení estado de emergência hlídá pravidlo zpráv RTP.
+  - **`anepc`**: zásahy portugalské civilní ochrany ANEPC (přes fogos.pt). Velký zásah = aspoň `velky_zasah_lidi` lidí nebo `velky_zasah_letadel` letadel → 🟡, celkem přes `pripravit_lidi_celkem` lidí v terénu → 🟠.
+  - **`zemetreseni_utocista`**: zemětřesení podle státních služeb IGN (Španělsko) a IPMA (Portugalsko), stejný otřes od obou se sloučí. Od `sledovat_od` (M4,5) → 🟡, od `pripravit_od` (M6) → 🟠.
+  - Ve zprávách přibyly úřední kanály: DSN (španělské krizové řízení – svolání Comité de Situación), INCIBE-CERT a irský NCSC (kybernetické útoky na stát).
+  - Radiaci v zemích útočišť zatím hlídat nejde: španělská CSN, portugalská RADNET ani irská EPA nezveřejňují aktuální dávkový příkon strojově.
 - **`notify.repeat_level3_minutes`**: jak často opakovat upozornění, dokud trvá 🔴 (0 = vypnuto).
 - **`notify.min_level`**: od jakého stupně posílat upozornění (výchozí 1).
 
@@ -121,8 +128,13 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 | Poslanecká sněmovna (otevřená data) | nové sněmovní tisky: stav ohrožení státu, válečný stav, mobilizace |
 | EASA | bulletiny o konfliktních zónách pro civilní letectví |
 | EMSC | zemětřesení v okolí domova |
+| REE, EirGrid | elektrická síť Španělska a Irska – propad spotřeby proti předpovědi (blackout) |
+| BOE, Oireachtas (otevřená data) | vyhlášení stavu alarm, výjimečného stavu nebo mobilizace ve Španělsku, zákony o mimořádných pravomocech v Irsku |
+| ANEPC (přes fogos.pt) | velké zásahy portugalské civilní ochrany (požáry, povodně) |
+| IGN, IPMA | zemětřesení ve Španělsku a Portugalsku |
+| DSN, INCIBE-CERT, NCSC Irsko | krizové řízení Španělska a kybernetické útoky (pravidla zpráv) |
 | Natural Earth (world-atlas) | podklad mapy v dashboardu (`web/mapa.json`, volné dílo) |
-| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC, MAAE, SÚJB | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
+| ČT24, iROZHLAS, Novinky, Tagesschau, MDR, El País, RTP, RTÉ, BBC, MAAE, SÚJB, DSN, INCIBE-CERT, NCSC Irsko | titulky podle pravidel, potvrzení = 2 nezávislé zdroje |
 
 Nefunkční zdroj ukáže dashboard v části Zdroje. Když jich nefunguje většina, místo „Klid“ ukáže „Bez dat“.
 

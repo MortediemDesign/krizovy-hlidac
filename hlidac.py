@@ -32,6 +32,7 @@ import threading
 import time
 import traceback
 import unicodedata
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -1407,6 +1408,411 @@ def src_emsc(cfg, fetch):
     return events, info, {"quakes": quakes[:10], "days": c.get("dni", 7), "min_mag": c.get("min_mag", 2.0)}
 
 
+
+# ───────────────────────── útočiště: státní zdroje (ES, PT, IE) ─────────────────────────
+
+REE_RT = "https://apidatos.ree.es/es/datos/demanda/demanda-tiempo-real"
+EIRGRID = "https://www.smartgriddashboard.com/DashboardService.svc/data"
+BOE_API = "https://www.boe.es/datosabiertos/api/boe/sumario/"
+OIREACHTAS = "https://api.oireachtas.ie/v1/legislation"
+FOGOS = "https://api.fogos.pt/v2/incidents/active?all=1"
+IGN_RSS = "https://www.ign.es/ign/RssTools/sismologia.xml"
+IPMA_SEISMO = "https://api.ipma.pt/open-data/observation/seismic/7.json"
+MONTHS_EN = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+GRID_ADVICE = ("Výpadek proudu v zemi útočiště. Cestu tam teď neplánuj: nepojedou pumpy, platby kartou "
+               "ani mobilní síť. Počkej, až provozovatel síť obnoví, nebo zvol jiné útočiště.")
+GAZETTE_ADVICE = ("Úřední vyhlášení mimořádného stavu v zemi útočiště. Ověř, jestli platí omezení pohybu "
+                  "nebo vstupu do země, než tam vyrazíš.")
+ANEPC_ADVICE = ("Velké zásahy portugalské civilní ochrany. Před cestou ověř uzavírky silnic a evakuace "
+                "na trase a v cíli (fogos.pt, prociv.gov.pt).")
+BOE_RULES = [
+    (2, r"(declara|prorroga)[a-z]* (el )?estado de (alarma|excepcion|sitio)"),
+    (1, r"(modifica|amplia)[a-z]* (el )?estado de alarma|estado de (excepcion|sitio)"
+        r"|situacion de interes para la seguridad nacional|movilizacion (general|militar|de reservistas)"
+        r"|reservistas[a-z ]{0,40}(activa|incorpora)"),
+]
+BOE_EXCLUDE = r"^(correccion de errores|sentencia|auto |recurso|cuestion de inconstitucionalidad)"
+OIREACHTAS_RULES = [
+    (2, r"emergency powers|national emergency"),
+    (1, r"state of emergency|emergency measures|conscription|martial law|mobilis"
+        r"|(electricity|energy|gas|fuel)[a-z ()]{0,30}emergency"),
+]
+
+
+def _tz(name: str, hours: int = 1):
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(name)
+    except Exception:
+        return timezone(timedelta(hours=hours))
+
+
+def grid_shortfall(points, thresholds, need=2):
+    """Body [(čas, skutečnost, předpověď)] vzestupně. Stupeň platí, jen když ho dosáhnou poslední `need` body."""
+    pts = [p for p in points if p[1] is not None and p[1] > 0 and p[2]]   # nula = výpadek dat, ne sítě
+    if not pts:
+        return 0, None, None
+    def lvl(p):
+        d = (p[2] - p[1]) / p[2] * 100
+        return sum(1 for t in thresholds if d >= t)
+    last = pts[-need:]
+    level = min(lvl(p) for p in last) if len(last) >= need else 0
+    t, a, f = pts[-1]
+    return level, pts[-1], round((f - a) / f * 100, 1)
+
+
+def ree_points(fetch, day) -> list:
+    """REE: skutečná a předpovězená spotřeba Španělska po 5 minutách (MW)."""
+    url = f"{REE_RT}?start_date={day:%Y-%m-%d}T00:00&end_date={day:%Y-%m-%d}T23:59&time_trunc=hour"
+    js = json.loads(fetch(url, timeout=25))
+    ser = {}
+    for x in (js.get("included") or []) if isinstance(js, dict) else []:
+        a = x.get("attributes") or {}
+        ser[a.get("title") or x.get("type")] = a.get("values") or []
+    if "Real" not in ser or "Prevista" not in ser:
+        keys = list(ser)[:5] or (list(js)[:5] if isinstance(js, dict) else type(js).__name__)
+        raise RuntimeError(f"REE: neznámý formát odpovědi {keys}")
+    prev = {v.get("datetime"): _num(v.get("value")) for v in ser["Prevista"]}
+    pts = []
+    for v in ser["Real"]:
+        t, val = parse_date(v.get("datetime")), _num(v.get("value"))
+        if t and val is not None:
+            pts.append((t, val, prev.get(v.get("datetime"))))
+    return sorted(pts)
+
+
+def eirgrid_rows(fetch, area, region, day) -> list:
+    """EirGrid Smart Grid Dashboard: řada [(čas, MW)] pro jeden den (irský místní čas)."""
+    ds = f"{day.day:02d}-{MONTHS_EN[day.month - 1]}-{day.year}"
+    js = json.loads(fetch(f"{EIRGRID}?area={area}&region={region}&datefrom={ds}+00%3A00&dateto={ds}+23%3A59", timeout=25))
+    if not isinstance(js, dict) or not isinstance(js.get("Rows"), list):
+        raise RuntimeError(f"EirGrid: neznámý formát odpovědi {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
+    if js.get("ErrorMessage"):
+        raise RuntimeError(f"EirGrid: {js['ErrorMessage']}"[:150])
+    tz = _tz("Europe/Dublin", 0)
+    out = []
+    for r in js["Rows"]:
+        try:
+            t = datetime.strptime(r.get("EffectiveTime", ""), "%d-%b-%Y %H:%M:%S").replace(tzinfo=tz).astimezone(timezone.utc)
+        except ValueError:
+            continue
+        out.append((t, _num(r.get("Value"))))
+    return out
+
+
+def src_grid_refuges(cfg, fetch, mem):
+    """Elektrická síť v zemích útočišť: skutečná spotřeba proti předpovědi provozovatele.
+    Prudký propad pod předpověď = rozsáhlý výpadek (tak se projevil blackout na Pyrenejském poloostrově 28. 4. 2025)."""
+    c = cfg["sit_utocista"]
+    now = utcnow()
+    thr = c.get("pokles_pct", [15, 35])
+    stale_after = timedelta(minutes=c.get("stara_data_min", 90))
+    out, events, errors = [], [], []
+    for s in c["systemy"]:
+        try:
+            if s["typ"] == "ree":
+                day = now.astimezone(_tz("Europe/Madrid")).date()
+                pts = ree_points(fetch, day)
+                if len([p for p in pts if p[1]]) < 2:          # krátce po půlnoci ještě nejsou dnešní data
+                    pts = ree_points(fetch, day - timedelta(days=1)) + pts
+                operator, link = "REE", "https://www.ree.es/es/datos/demanda"
+            elif s["typ"] == "eirgrid":
+                reg = s.get("oblast", "ROI")
+                day = now.astimezone(_tz("Europe/Dublin", 0)).date()
+                fc = mem.setdefault("eirgrid_fc", {}).setdefault(reg, {})
+                for t, v in eirgrid_rows(fetch, "demandforecast", reg, day):   # předpověď jen dopředu → schovat si ji
+                    if v:
+                        fc[iso(t)] = v
+                for k in [k for k in fc if now - (parse_date(k) or now) > timedelta(hours=36)]:
+                    del fc[k]
+                act = [(t, v) for t, v in eirgrid_rows(fetch, "demandactual", reg, day) if v is not None]
+                if len(act) < 2:
+                    act = [(t, v) for t, v in eirgrid_rows(fetch, "demandactual", reg, day - timedelta(days=1))
+                           if v is not None] + act
+                pts = []
+                for t, v in act:
+                    slot = t.replace(minute=0 if t.minute < 30 else 30, second=0, microsecond=0)
+                    pts.append((t, v, fc.get(iso(slot))))
+                operator, link = "EirGrid", "https://www.smartgriddashboard.com/roi/demand/"
+            else:
+                raise RuntimeError(f"neznámý typ sítě {s['typ']}")
+        except Exception as e:
+            errors.append(f"{s.get('name', s['region'])}: {type(e).__name__}: {e}"[:160])
+            continue
+        level, last, dev = grid_shortfall(pts, thr)
+        item = {"code": s["region"], "name": s.get("name", s["region"]), "operator": operator, "level": 0}
+        if last:
+            stale = now - last[0] > stale_after
+            item.update(actual=round(last[1]), forecast=round(last[2]), dev=dev, time=iso(last[0]), stale=stale)
+            if stale:
+                level = 0
+        else:
+            item["pozn"] = "předpověď se teprve sbírá" if pts else "zatím bez dat"
+        item["level"] = level
+        if level:
+            ev = make_event(f"Síť {operator}", s["region"], level,
+                            f"Možný výpadek proudu – {item['name']}: spotřeba {last[1] / 1000:.1f} GW, "
+                            f"o {dev:.0f} % pod předpovědí {last[2] / 1000:.1f} GW ({operator}).",
+                            url=link, eid=f"sit:{s['region']}:{level}", when=last[0], detail=GRID_ADVICE)
+            if level >= 2:
+                ev["advice"] = GRID_ADVICE
+            events.append(ev)
+        out.append(item)
+    if not out:
+        raise RuntimeError("; ".join(errors) or "žádná síť není nastavená")
+    parts = [f"{o['code']} " + (f"{o['actual'] / 1000:.1f} GW ({-o['dev']:+.0f} % proti předpovědi)" if "actual" in o
+                                else o.get("pozn", "")) for o in out]
+    info = "; ".join(parts) + (f"; nefunguje: {'; '.join(errors)}" if errors else "")
+    return events, info, {"site": out, "time": iso(now)}
+
+
+def _aslist(x) -> list:
+    return x if isinstance(x, list) else [x] if x else []
+
+
+def _boe_walk(o):
+    if isinstance(o, list):
+        for x in o:
+            yield from _boe_walk(x)
+    elif isinstance(o, dict):
+        if o.get("identificador") and o.get("titulo"):
+            yield o
+            return
+        for v in o.values():
+            if isinstance(v, (dict, list)):
+                yield from _boe_walk(v)
+
+
+def boe_items(js) -> list:
+    """Položky souhrnu BOE jako (kód oddílu, položka). Úřad i nadpis mohou být seznam i jediný objekt."""
+    sumario = ((js.get("data") or {}) if isinstance(js, dict) else {}).get("sumario") or {}
+    out = []
+    for diario in _aslist(sumario.get("diario")):
+        for sec in _aslist(diario.get("seccion") if isinstance(diario, dict) else None):
+            if isinstance(sec, dict):
+                out += [(str(sec.get("codigo") or ""), it) for it in _boe_walk(sec)]
+    return out
+
+
+def _match_level(title: str, rules) -> int:
+    t = norm(title)
+    return max([lvl for lvl, rx in rules if re.search(rx, t)] or [0])
+
+
+def src_gazettes(cfg, fetch, mem):
+    """Úřední věstníky a parlamenty útočišť: BOE (Španělsko, denně) a návrhy zákonů Oireachtas (Irsko).
+    Vyhlášení stavu nouze, výjimečného stavu nebo mobilizace se tu objeví úředně dřív, než se rozkřikne."""
+    c = cfg["vestniky"]
+    now = utcnow()
+    active = mem.setdefault("active", {})
+    info, errors, parts = [], [], {}
+
+    def add(key, title, url, level, src, region):
+        if key not in active:
+            active[key] = {"title": title, "url": url, "level": level, "src": src, "region": region, "first": iso(now)}
+
+    if c.get("boe", True):
+        try:
+            today = now.astimezone(_tz("Europe/Madrid")).date()
+            n, days = 0, []
+            for d in (today, today - timedelta(days=1)):
+                try:
+                    raw = fetch(f"{BOE_API}{d:%Y%m%d}", timeout=30, headers={"Accept": "application/json"})
+                except urllib.error.HTTPError as e:
+                    if e.code == 404:          # ten den BOE nevyšel (neděle) nebo ještě nevyšel
+                        continue
+                    raise
+                items = boe_items(json.loads(raw))
+                if not items:
+                    raise RuntimeError("BOE: v souhrnu nejsou položky – změnil se formát?")
+                days.append(d)
+                n += len(items)
+                for sec, it in items:     # vyhlášení vychází v oddílu I; rozsudky o dřívějších stavech ne
+                    if sec not in c.get("boe_oddily", ["1"]) or re.search(BOE_EXCLUDE, norm(it["titulo"])):
+                        continue
+                    lvl = _match_level(it["titulo"], BOE_RULES)
+                    if lvl:
+                        url = it.get("url_html") or ((it.get("url_pdf") or {}).get("texto") if isinstance(it.get("url_pdf"), dict) else it.get("url_pdf")) or "https://www.boe.es/"
+                        add(f"boe:{it['identificador']}", it["titulo"], url, lvl, "BOE", "ES")
+            parts["boe"] = {"n": n, "dny": [d.isoformat() for d in days]}
+            info.append(f"BOE {n} položek" + (f" ({', '.join(fmt_date(d.isoformat()) for d in days)})" if days else ", dnes ani včera nevyšel"))
+        except Exception as e:
+            errors.append(f"BOE: {type(e).__name__}: {e}"[:150])
+    if c.get("oireachtas", True):
+        try:
+            since = (now - timedelta(days=c.get("oireachtas_dni", 14))).strftime("%Y-%m-%d")
+            js = json.loads(fetch(f"{OIREACHTAS}?date_start={since}&limit=200", timeout=30))
+            if not isinstance(js, dict) or not isinstance(js.get("results"), list):
+                raise RuntimeError(f"Oireachtas: neznámý formát {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
+            n = 0
+            for r in js["results"]:
+                b = r.get("bill") or {}
+                title = (b.get("shortTitleEn") or "").strip()
+                if not title:
+                    continue
+                n += 1
+                lvl = _match_level(title, OIREACHTAS_RULES)
+                if lvl:
+                    y, no = b.get("billYear"), b.get("billNo")
+                    add(f"oir:{y}/{no}", f"{title} ({b.get('status') or 'návrh'})",
+                        f"https://www.oireachtas.ie/en/bills/bill/{y}/{no}/", lvl, "Oireachtas", "IE")
+            parts["oireachtas"] = {"n": n}
+            info.append(f"Oireachtas {n} návrhů za {c.get('oireachtas_dni', 14)} dní")
+        except Exception as e:
+            errors.append(f"Oireachtas: {type(e).__name__}: {e}"[:150])
+    if not parts:
+        raise RuntimeError("; ".join(errors) or "žádný věstník není zapnutý")
+    hold = timedelta(days=c.get("drzet_dni", 7))
+    for k in [k for k, a in active.items() if now - (parse_date(a["first"]) or now) > hold]:
+        del active[k]
+    events = []
+    for k, a in active.items():
+        ev = make_event(a["src"], a["region"], a["level"], f"{a['src']}: {a['title']}", url=a["url"],
+                        eid=f"vestnik:{k}", when=parse_date(a["first"]), detail=GAZETTE_ADVICE)
+        if a["level"] >= 2:
+            ev["advice"] = GAZETTE_ADVICE
+        events.append(ev)
+    info = ", ".join(info) + f"; zachyceno: {len(active)}" + (f"; nefunguje: {'; '.join(errors)}" if errors else "")
+    return events, info, {**parts, "zachyceno": [{**a, "key": k} for k, a in active.items()][:10]}
+
+
+def src_anepc(cfg, fetch):
+    """Portugalská civilní ochrana (ANEPC): probíhající zásahy přes fogos.pt, který data ANEPC zveřejňuje strojově."""
+    c = cfg["anepc"]
+    now = utcnow()
+    js = json.loads(fetch(c.get("url", FOGOS), timeout=25))
+    if not isinstance(js, dict) or not isinstance(js.get("data"), list):
+        raise RuntimeError(f"fogos.pt: neznámý formát odpovědi {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
+    inc = [i for i in js["data"] if isinstance(i, dict)]
+    def n(i, k):
+        return int(_num(i.get(k)) or 0)
+    total = sum(n(i, "man") for i in inc)
+    big = [i for i in inc if i.get("important") or n(i, "man") >= c.get("velky_zasah_lidi", 150)
+           or n(i, "aerial") >= c.get("velky_zasah_letadel", 4)]
+    big.sort(key=lambda i: (-n(i, "man"), -n(i, "aerial")))
+    def place(i):
+        return i.get("concelho") or i.get("district") or i.get("location") or "?"
+    def kind(i):
+        k = re.sub(r"\s+", " ", str(i.get("natureza") or "")).strip()
+        return k[:48] + ("…" if len(k) > 48 else "")
+    lvl = 2 if total >= c.get("pripravit_lidi_celkem", 2500) else 1 if big else 0
+    events = []
+    if lvl:
+        top = ", ".join(f"{place(i)} ({n(i, 'man')} lidí"
+                        + (f", {_pl(n(i, 'aerial'), 'letadlo', 'letadla', 'letadel')}" if n(i, "aerial") else "") + ")"
+                        for i in big[:3])
+        title = (f"Portugalsko – {_pl(len(big), 'velký zásah', 'velké zásahy', 'velkých zásahů')} ANEPC, "
+                 f"celkem {total} lidí v terénu"
+                 + (f": {top}" if top else ""))
+        ev = make_event("ANEPC", c.get("region", "PT"), lvl, title, url="https://fogos.pt/",
+                        eid=f"anepc:L{lvl}", detail=ANEPC_ADVICE)
+        if lvl >= 2:
+            ev["advice"] = ANEPC_ADVICE
+        events.append(ev)
+    rows = []
+    for i in (big or sorted(inc, key=lambda i: -n(i, "man")))[:6]:
+        t = _num((i.get("dateTime") or {}).get("sec")) if isinstance(i.get("dateTime"), dict) else None
+        rows.append({"misto": place(i), "okres": i.get("district") or "", "druh": kind(i), "lidi": n(i, "man"),
+                     "letadla": n(i, "aerial"), "stav": i.get("status") or "", "velky": i in big,
+                     "time": iso(datetime.fromtimestamp(t, timezone.utc)) if t else ""})
+    info = f"{len(inc)} zásahů, {total} lidí v terénu, velkých: {len(big)}"
+    return events, info, {"n": len(inc), "lidi": total, "velke": len(big), "zasahy": rows, "level": lvl, "time": iso(now)}
+
+
+def _pl(n: int, one: str, few: str, many: str) -> str:
+    return f"{n} {one if n == 1 else few if 2 <= n <= 4 else many}"
+
+
+def _in_bbox(lat, lon, bb) -> bool:
+    lon1, lat1, lon2, lat2 = bb
+    return lat1 <= lat <= lat2 and lon1 <= lon <= lon2
+
+
+def src_seismo_refuges(cfg, fetch):
+    """Zemětřesení na Pyrenejském poloostrově podle státních seismologických služeb (IGN Španělsko, IPMA Portugalsko)."""
+    c = cfg["zemetreseni_utocista"]
+    now = utcnow()
+    days = c.get("dni", 7)
+    bbox = c.get("oblasti", [[-10.0, 35.8, 4.5, 44.0]])
+    pt_box = c.get("portugalsko_bbox", [-9.8, 36.8, -6.9, 42.2])
+    found, errors, ok = [], [], []
+
+    def keep(src, lat, lon, mag, t, place, url):
+        if None in (lat, lon, mag) or not t or mag < -9 or now - t > timedelta(days=days):
+            return
+        if not any(_in_bbox(lat, lon, b) for b in bbox):
+            return
+        found.append({"src": src, "lat": lat, "lon": lon, "mag": round(mag, 1), "time": iso(t), "_t": t,
+                      "place": place, "url": url, "region": "PT" if _in_bbox(lat, lon, pt_box) else "ES"})
+
+    if c.get("ign", True):
+        try:
+            root = ET.fromstring(fetch(c.get("ign_url", IGN_RSS), timeout=25))
+            n = 0
+            for it in root.iter("item"):
+                n += 1
+                d = child_text(it, "description")
+                m = re.search(r"magnitud\s+([\d.,]+)\s+en\s+(.+?)\s+en la fecha\s+(\d+/\d+/\d+\s+\d+:\d+:\d+)", d)
+                if not m:
+                    continue
+                try:
+                    t = datetime.strptime(m.group(3), "%d/%m/%Y %H:%M:%S").replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+                lat = lon = None
+                for ch in it:
+                    if local(ch.tag) == "lat":
+                        lat = _num(ch.text)
+                    elif local(ch.tag) == "long":
+                        lon = _num(ch.text)
+                keep("IGN", lat, lon, _num(m.group(1).replace(",", ".")), t, m.group(2).strip().title(),
+                     child_text(it, "link") or "https://www.ign.es/web/ign/portal/ultimos-terremotos")
+            if n and not any(f["src"] == "IGN" for f in found) and "magnitud" not in ET.tostring(root, encoding="unicode"):
+                raise RuntimeError("IGN: neznámý formát položek")
+            ok.append(f"IGN {n}")
+        except Exception as e:
+            errors.append(f"IGN: {type(e).__name__}: {e}"[:150])
+    if c.get("ipma", True):
+        try:
+            js = json.loads(fetch(c.get("ipma_url", IPMA_SEISMO), timeout=25))
+            data = js.get("data") if isinstance(js, dict) else None
+            if not isinstance(data, list):
+                raise RuntimeError(f"IPMA: neznámý formát {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
+            for q in data:
+                keep("IPMA", _num(q.get("lat")), _num(q.get("lon")), _num(q.get("magnitud")), parse_date(q.get("time")),
+                     (q.get("obsRegion") or "").strip().title(), "https://www.ipma.pt/pt/geofisica/sismologia/")
+            ok.append(f"IPMA {len(data)}")
+        except Exception as e:
+            errors.append(f"IPMA: {type(e).__name__}: {e}"[:150])
+    if not ok:
+        raise RuntimeError("; ".join(errors))
+    found.sort(key=lambda q: (q["_t"], q["src"] != "IPMA"))
+    quakes = []
+    for q in found:      # stejný otřes od obou služeb: do 2 minut a 0,5°
+        dup = next((x for x in quakes if abs((x["_t"] - q["_t"]).total_seconds()) <= 120
+                    and abs(x["lat"] - q["lat"]) <= 0.5 and abs(x["lon"] - q["lon"]) <= 0.5), None)
+        if dup:
+            dup["mag"] = max(dup["mag"], q["mag"])
+            continue
+        quakes.append(q)
+    events = []
+    for q in quakes:
+        lvl = 2 if q["mag"] >= c.get("pripravit_od", 6.0) else 1 if q["mag"] >= c.get("sledovat_od", 4.5) else 0
+        if lvl and now - q["_t"] <= timedelta(hours=c.get("drzet_hodin", 24)):
+            ev = make_event(f"{q['src']} zemětřesení", q["region"], lvl,
+                            f"Zemětřesení M{q['mag']:.1f} – {q['place']} ({q['src']})", url=q["url"],
+                            eid=f"seis:{q['src']}:{q['time']}", when=q["_t"], detail=QUAKE_ADVICE)
+            if lvl >= 2:
+                ev["advice"] = QUAKE_ADVICE
+            events.append(ev)
+    quakes.sort(key=lambda q: q["_t"], reverse=True)
+    shown = [{k: v for k, v in q.items() if k != "_t"} for q in quakes if q["mag"] >= c.get("min_mag", 2.5)][:10]
+    strongest = max((q["mag"] for q in quakes), default=None)
+    info = (f"{len(quakes)} otřesů za {days} dní" + (f", nejsilnější M{strongest}" if strongest is not None else "")
+            + f" ({', '.join(ok)})" + (f"; nefunguje: {'; '.join(errors)}" if errors else ""))
+    return events, info, {"quakes": shown, "days": days, "min_mag": c.get("min_mag", 2.5)}
+
+
 SOURCES = {
     "nina":           ("NINA – místa staveb a hranice", src_nina, "nina"),
     "nina_national":  ("NINA – celé Německo", src_nina_national, "nina_national"),
@@ -1429,6 +1835,10 @@ SOURCES = {
     "psp":            ("Sněmovní tisky (PSP)", src_psp, "psp"),
     "easa":           ("EASA – konfliktní zóny", src_easa, "easa"),
     "emsc":           ("Zemětřesení (EMSC)", src_emsc, "zemetreseni"),
+    "sit":            ("Elektrická síť útočišť (REE, EirGrid)", src_grid_refuges, "sit_utocista"),
+    "vestniky":       ("Úřední věstníky útočišť (BOE, Oireachtas)", src_gazettes, "vestniky"),
+    "anepc":          ("Civilní ochrana Portugalska (ANEPC)", src_anepc, "anepc"),
+    "seismo_ib":      ("Zemětřesení – IGN a IPMA", src_seismo_refuges, "zemetreseni_utocista"),
 }
 
 
@@ -2038,6 +2448,8 @@ def build_status(cfg, state, events, region_levels, overall, now):
         "gdelt": (extras.get("gdelt") or {}).get("dotazy", []),
         "quakes": extras.get("emsc") or {},
         "space": extras.get("noaa") or {},
+        "utocista": {"sit": (extras.get("sit") or {}).get("site", []), "vestniky": extras.get("vestniky") or {},
+                     "anepc": extras.get("anepc") or {}, "seismo": extras.get("seismo_ib") or {}},
         "pripravenost": state.get("prep_items", []),
         "seznamy": cfg.get("seznamy") or DEFAULT_CHECKLISTS,
         "history": list(reversed(state.get("history", [])))[:20],
@@ -2253,7 +2665,22 @@ def demo_status(cfg):
         "noaa": {"now": 0, "max": 4, "day": "2026-11-14"},
         "emsc": {"days": 7, "min_mag": 2.0, "quakes": [
             {"zone": "Chebsko a Vogtland", "mag": 2.4, "time": iso(now - timedelta(days=2)), "place": "Czech Republic", "depth": 9}]},
+        "sit": {"time": iso(now), "site": [
+            {"code": "ES", "name": "Španělsko", "operator": "REE", "level": 0, "actual": 27180, "forecast": 27420,
+             "dev": 0.9, "time": iso(now - timedelta(minutes=10)), "stale": False},
+            {"code": "IE", "name": "Irsko", "operator": "EirGrid", "level": 0, "actual": 5040, "forecast": 5110,
+             "dev": 1.4, "time": iso(now - timedelta(minutes=25)), "stale": False}]},
+        "vestniky": {"boe": {"n": 212, "dny": [(now - timedelta(days=1)).date().isoformat()]}, "oireachtas": {"n": 12},
+                     "zachyceno": []},
+        "anepc": {"n": 54, "lidi": 486, "velke": 1, "level": 1, "time": iso(now), "zasahy": [
+            {"misto": "Arganil", "okres": "Coimbra", "druh": "Incêndio Rural em Povoamento Florestal", "lidi": 212,
+             "letadla": 5, "stav": "Em Curso", "velky": True, "time": iso(now - timedelta(hours=3))}]},
+        "seismo_ib": {"days": 7, "min_mag": 2.5, "quakes": [
+            {"src": "IGN", "mag": 3.1, "time": iso(now - timedelta(hours=9)), "place": "Golfo De Cádiz", "region": "ES",
+             "lat": 36.4, "lon": -7.6, "url": "https://www.ign.es/"}]},
     }
+    events.append(make_event("ANEPC", "PT", 1, "Portugalsko – 1 velký zásah ANEPC, celkem 486 lidí v terénu: "
+                             "Arganil (212 lidí, 5 letadel)", url="https://fogos.pt/", eid="anepc:L1", detail=ANEPC_ADVICE))
     state["prep_items"] = preparedness(cfg, now)
     rl = {r: max([e["level"] for e in events if e["region"] == r] or [0]) for r in region_order(cfg)}
     overall = max(rl[r] for r in HOME_REGIONS)
@@ -2337,7 +2764,8 @@ def main():
                 ok = sum(1 for s in st["sources"] if s["ok"])
                 print(f"::notice title=Zdroje {ok}/{len(st['sources'])}::" + ", ".join(
                     f"{s['key']} {'OK' if s['ok'] else 'CHYBA'}" for s in st["sources"]), flush=True)
-                public = ("noaa", "gas", "lng", "gasout", "ioda", "gdelt", "nukib", "psp", "easa", "mapa", "aa")   # info bez míst a tras
+                public = ("noaa", "gas", "lng", "gasout", "ioda", "gdelt", "nukib", "psp", "easa", "mapa", "aa",
+                          "sit", "vestniky", "anepc", "seismo_ib")   # info bez míst a tras
                 print("::notice title=Signály::" + " · ".join(
                     f"{s['key']}: {s['info']}" for s in st["sources"] if s["key"] in public and s["ok"]), flush=True)
                 for s in st["sources"]:

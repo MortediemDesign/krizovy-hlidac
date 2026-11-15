@@ -372,6 +372,14 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       <p class="attr">Data: NOAA SWPC. Stupnice G0–G5, od G4 hrozí poruchy rozvodných sítí.</p></section>
     <section id="s-quake" hidden><h2>Zemětřesení v okolí</h2><ul class="rows" id="quakes"></ul>
       <p class="attr">Data: EMSC. Roje na Chebsku bývají slabé, cítit jsou zhruba od M3.</p></section>
+    <section id="s-ref" hidden><h2>Útočiště – státní zdroje</h2><ul class="rows" id="ref-grid"></ul>
+      <p class="sub" id="h-ref-gz">Úřední věstníky</p><ul class="rows" id="ref-gz"></ul>
+      <p class="sub" id="h-ref-pc">Civilní ochrana Portugalska</p><ul class="rows" id="ref-pc"></ul>
+      <p class="sub" id="h-ref-q">Zemětřesení – Španělsko a Portugalsko</p><ul class="rows" id="ref-q"></ul>
+      <p class="attr">Síť: REE (Španělsko; Portugalsko je ve stejné synchronní síti) a EirGrid (Irsko). Ryska = předpověď provozovatele,
+        propad o 15 % = Sleduj, o 35 % = Připrav se. Věstníky: BOE a návrhy zákonů irského parlamentu. Civilní ochrana: ANEPC
+        přes <a href="https://fogos.pt/" target="_blank" rel="noopener">fogos.pt</a>. Zemětřesení: IGN a IPMA.
+        Kyberútoky a krizový výbor Španělska hlídají zprávy z INCIBE-CERT, irského NCSC a DSN.</p></section>
     <section id="s-world" hidden><h2>Kolik o tom píše svět</h2><ul class="rows" id="world"></ul>
       <p class="attr">Data: GDELT, zprávy v 65 jazycích. Poměr = posledních 6 hodin proti běžnému dni za poslední týden.</p></section>
     <section>
@@ -863,6 +871,16 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       ov.push(row(mini(q && q.mag >= 3.5 ? 1 : 0), "Zemětřesení", q ? `M${dec(q.mag)}` : "klid",
         q ? `naposledy ${fmtTime(q.time)}, ${q.zone}` : `za ${qk.days || 7} dní nic od M${dec(qk.min_mag || 2)}`, go("s-quake")));
     }
+    const ut = s.utocista || {};
+    const utGrid = ut.sit || [], utGz = ut.vestniky || {}, utPc = ut.anepc || {}, utQ = ut.seismo || {};
+    const utCaught = utGz.zachyceno || [];
+    if (utGrid.length || utPc.n != null || utGz.boe || utGz.oireachtas) {
+      const lvRef = Math.max(0, ...utGrid.map(g => g.level || 0), utPc.level || 0, ...utCaught.map(a => a.level || 0));
+      const parts = utGrid.filter(g => g.actual != null).map(g => `síť ${g.code} ${fmtNum(-g.dev)} %`);
+      if (utPc.n != null) parts.push(utPc.velke ? `PT velké zásahy: ${utPc.velke}` : "PT bez velkých zásahů");
+      parts.push(utCaught.length ? `${utCaught.length}× úřední vyhlášení` : "bez vyhlášení");
+      ov.push(row(mini(lvRef), "Útočiště", lvRef ? "pozor" : "v pořádku", parts.join(", "), go("s-ref")));
+    }
     const okSrc = s.sources.filter(x => x.ok).length;
     ov.push(row(lamp(okSrc === s.sources.length ? 0 : okSrc * 2 < s.sources.length ? 3 : 1), "Zdroje", `${okSrc}/${s.sources.length}`,
       okSrc === s.sources.length ? "všechny odpovídají" : `nefunguje: ${s.sources.filter(x => !x.ok).map(x => x.label).join(", ")}`, go("d-src")));
@@ -1015,6 +1033,42 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       ? qk.quakes.slice(0, 8).map(q => row(mini(q.mag >= 5 ? 2 : q.mag >= 3.5 ? 1 : 0), `M${dec(q.mag)} ${q.place || q.zone}`,
           fmtTime(q.time), `${q.zone}` + (q.depth != null ? `, hloubka ${q.depth} km` : "")))
       : [row(mini(0), "Klid", "", `Za ${qk.days || 7} dní žádný otřes od M${dec(qk.min_mag || 2)}.`)]));
+    $("s-ref").hidden = !(utGrid.length || utPc.n != null || utGz.boe || utGz.oireachtas || Array.isArray(utQ.quakes));
+    $("ref-grid").replaceChildren(...utGrid.map(g => {
+      if (g.actual == null) return row(mini(0), `Síť – ${g.name}`, "", `${g.operator}: ${g.pozn || "bez dat"}`);
+      const li = row(mini(g.level), `Síť – ${g.name}`, `${dec(g.actual / 1000)} GW`, null);
+      li.append(gauge(g.actual, g.forecast * 1.3, [{at: g.forecast}, {at: g.forecast * 0.85, level: 1}, {at: g.forecast * 0.65, level: 2}],
+        {level: g.level, label: `${dec(g.actual / 1000)} GW`}),
+        el("span", {class:"info", text: [`předpověď ${dec(g.forecast / 1000)} GW (${fmtNum(-g.dev)} %)`, g.operator,
+          g.stale ? "data se neaktualizují" : fmtTime(g.time)].join(", ")}));
+      return li;
+    }));
+    const gzInfo = [utGz.boe ? `BOE ${utGz.boe.n} položek` + ((utGz.boe.dny || []).length ? ` (${utGz.boe.dny.map(fmtDate).join(", ")})` : ", dnes ani včera nevyšel") : "",
+      utGz.oireachtas ? `irský parlament ${utGz.oireachtas.n} návrhů za 14 dní` : ""].filter(Boolean).join(", ");
+    const gzRows = utCaught.map(a => {
+      const u = safeUrl(a.url);
+      const name = u ? el("a", {href:u, target:"_blank", rel:"noopener", class:"name", text:a.title}) : a.title;
+      return row(mini(a.level), name, a.src, `${a.region === "IE" ? "Irsko" : "Španělsko"}, zachyceno ${fmtTime(a.first)}`);
+    });
+    if (utGz.boe || utGz.oireachtas) gzRows.push(row(utCaught.length ? lamp(null) : mini(0),
+      utCaught.length ? "Prošlo" : "Bez vyhlášení mimořádného stavu", "", gzInfo));
+    $("h-ref-gz").hidden = !gzRows.length;
+    $("ref-gz").replaceChildren(...gzRows);
+    const pcRows = [];
+    if (utPc.n != null) {
+      pcRows.push(row(mini(utPc.level || 0), "Probíhající zásahy", String(utPc.n), `${utPc.lidi} lidí v terénu, velkých zásahů: ${utPc.velke}`));
+      (utPc.zasahy || []).filter(z => z.velky).forEach(z => pcRows.push(row(lamp(null),
+        z.okres && z.okres !== z.misto ? `${z.misto} (${z.okres})` : z.misto, `${z.lidi} lidí`,
+        [z.druh, z.letadla ? `letadla: ${z.letadla}` : "", z.stav].filter(Boolean).join(", "))));
+    }
+    $("h-ref-pc").hidden = !pcRows.length;
+    $("ref-pc").replaceChildren(...pcRows);
+    const qRows = !Array.isArray(utQ.quakes) ? [] : utQ.quakes.length
+      ? utQ.quakes.slice(0, 6).map(q => row(mini(q.mag >= 6 ? 2 : q.mag >= 4.5 ? 1 : 0), `M${dec(q.mag)} ${q.place}`, fmtTime(q.time),
+          `${q.region === "PT" ? "Portugalsko" : "Španělsko"}, ${q.src}`))
+      : [row(mini(0), "Klid", "", `Za ${utQ.days || 7} dní žádný otřes od M${dec(utQ.min_mag || 2.5)}.`)];
+    $("h-ref-q").hidden = !qRows.length;
+    $("ref-q").replaceChildren(...qRows);
     const gd = s.gdelt || [];
     $("s-world").hidden = !gd.length;
     $("world").replaceChildren(...gd.map(g => row(mini(g.ratio >= 4 ? 1 : 0), g.name, `${dec(g.ratio)}×`,
