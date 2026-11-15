@@ -1481,7 +1481,7 @@ def ree_points(fetch, day) -> list:
     return sorted(pts)
 
 
-def eirgrid_rows(fetch, area, region, day, retry_s=4) -> list:
+def eirgrid_rows(fetch, area, region, day, retry_s=8) -> list:
     """EirGrid Smart Grid Dashboard: řada [(čas, MW)] pro jeden den (irský místní čas).
     Server při více dotazech za sebou občas vrátí 503 – jeden opakovaný pokus po pauze."""
     ds = f"{day.day:02d}-{MONTHS_EN[day.month - 1]}-{day.year}"
@@ -1557,7 +1557,7 @@ def src_grid_refuges(cfg, fetch, mem):
         except Exception as e:
             errors.append(f"{s.get('name', s['region'])}: {type(e).__name__}: {e}"[:160])
             prev = mem.get("posledni", {}).get(s["region"])      # krátký výpadek provozovatele: drž poslední stav
-            if prev and now - (parse_date(prev["cas"]) or now) <= timedelta(minutes=c.get("drzet_pri_vypadku_min", 60)):
+            if prev and now - (parse_date(prev["cas"]) or now) <= timedelta(minutes=c.get("drzet_pri_vypadku_min", 120)):
                 out.append({**prev["item"], "pozn": "poslední známý stav, provozovatel teď neodpovídá"})
                 events += prev["events"]
             continue
