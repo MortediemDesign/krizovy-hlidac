@@ -771,7 +771,7 @@
       },
       {
         "id": "fi_yle",
-        "label": "Finsko – bezpečnostní incident",
+        "label": "Finsko a okolí – bezpečnostní hlášení (Yle)",
         "region": "EU",
         "single": 1,
         "confirmed": 1,
@@ -1292,7 +1292,7 @@
   },
   "radiace_hu": {
     "enabled": true,
-    "pozn": "Dávkový příkon z asi 80 stanic maďarské civilní ochrany (u Paksu je jaderná elektrárna). Aspoň `min_stanic` nad `warn_nsvh` = Sleduj, nad `alarm_nsvh` = Připrav se. Běžné pozadí je 80–200 nSv/h.",
+    "pozn": "Dávkový příkon z asi 150 stanic maďarské civilní ochrany (u Paksu je jaderná elektrárna). Aspoň `min_stanic` nad `warn_nsvh` = Sleduj, nad `alarm_nsvh` = Připrav se. Běžné pozadí je 80–200 nSv/h.",
     "url": "https://www.katasztrofavedelem.hu/10464/RSS_hattersugarzas",
     "warn_nsvh": 600,
     "alarm_nsvh": 2000,

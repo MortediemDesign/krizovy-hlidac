@@ -1932,7 +1932,7 @@ RAD_EAST_ADVICE = ("Zvýšená radiace na více sondách v Maďarsku (u Paksu je
 
 
 def src_radiation_hu(cfg, fetch):
-    """Radiace v Maďarsku: dávkový příkon z měřicí sítě maďarské civilní ochrany (BM OKF), asi 80 stanic."""
+    """Radiace v Maďarsku: dávkový příkon z měřicí sítě maďarské civilní ochrany (BM OKF), asi 150 stanic."""
     c = cfg["radiace_hu"]
     root = ET.fromstring(fetch(c.get("url", OKF_SUGARZAS), timeout=25))
     latest = {}
@@ -1968,7 +1968,7 @@ def src_radiation_hu(cfg, fetch):
             ev["advice"] = RAD_EAST_ADVICE
         events.append(ev)
     median = vals[len(vals) // 2]
-    info = f"{len(vals)} stanic, medián {median / 1000:.2f} µSv/h, nejvíc {top_name} {top_val / 1000:.2f} µSv/h"
+    info = f"{len(vals)} stanic, medián {median / 1000:.2f} µSv/h, nejvíc {top_name} {top_val / 1000:.2f} µSv/h".replace(".", ",")
     zone = {"name": "Maďarsko (BM OKF)", "n": len(vals), "median": round(median / 1000, 3),
             "max": round(top_val / 1000, 3), "max_name": top_name, "level": lvl, "time": iso(newest) if newest else ""}
     return events, info, {"zona": zone, "warn": warn / 1000, "alarm": alarm / 1000}

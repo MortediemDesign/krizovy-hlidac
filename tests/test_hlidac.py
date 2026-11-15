@@ -1424,7 +1424,7 @@ class TestEastSources(unittest.TestCase):
         ev, info, extra = hlidac.src_radiation_hu(CFG, FakeNet(east_routes()))
         self.assertEqual(ev, [])
         self.assertEqual((extra["zona"]["n"], extra["zona"]["max_name"]), (3, "Rétság"))
-        self.assertIn("medián 0.11 µSv/h", info)
+        self.assertIn("medián 0,11 µSv/h", info)
         one = okf_rss([("Paks", 900), ("Ózd", 110), ("Szekszárd", 120)])
         self.assertEqual(hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": one}))[0], [])   # jedna sonda nestačí
         two = okf_rss([("Paks", 2500), ("Szekszárd", 2100), ("Ózd", 110)])
