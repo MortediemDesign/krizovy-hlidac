@@ -984,5 +984,61 @@ class TestEuropeMap(unittest.TestCase):
         self.assertIn("Sněžení", m["CZ"]["duvody"][0])
 
 
+class TestGieErrors(unittest.TestCase):
+    WRAP = json.dumps({"encodingOptions": 15, "content": "<html>Server Error</html>", "protocolVersion": "1.0",
+                       "statusCode": 500, "charset": None, "cacheable": False}).encode()
+
+    def setUp(self):
+        os.environ["AGSI_KEY"] = "abc"
+
+    def tearDown(self):
+        os.environ.pop("AGSI_KEY", None)
+
+    def test_wrapped_response(self):
+        with self.assertRaises(hlidac.GieTemporary):
+            hlidac._gie_rows(self.WRAP)
+        ok = json.dumps({"statusCode": 200, "content": json.dumps({"last_page": 1, "data": [{"a": 1}]})}).encode()
+        meta = {}
+        self.assertEqual(hlidac._gie_rows(ok, meta), [{"a": 1}])
+        self.assertEqual(meta["last_page"], 1)
+
+    def test_outages_keep_last_data(self):
+        now = datetime.now(timezone.utc)
+        t = lambda h: (now + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        good_iip = json.dumps({"last_page": 1, "data": [
+            {"reportingEntity": {"name": "Open Grid Europe GmbH"}, "message": {"unavailabilityType": "Unplanned"},
+             "from": t(-3), "to": t(10), "asset": {"name": "Waidhaus"}, "unavailable": {"capacity": "100", "unit": "GWh/d"}}]}).encode()
+        empty = b'{"data": []}'
+        mem = {}
+        ok_net = FakeNet({"iip.gie.eu": good_iip, "gie.eu": empty})
+        ev, info, extra = hlidac.src_gas_outages(CFG, ok_net, mem)
+        self.assertEqual(next(r for r in extra["oblasti"] if r["code"] == "DE")["gwh"], 100)
+        mem["time"] = ""                                                  # vynutit obnovu
+        bad_net = FakeNet({"iip.gie.eu": self.WRAP, "gie.eu": empty})
+        ev, info, extra = hlidac.src_gas_outages(CFG, bad_net, mem)        # IIP selže → drží se poslední data
+        self.assertEqual(next(r for r in extra["oblasti"] if r["code"] == "DE")["gwh"], 100)
+        self.assertIn("dočasně bez odpovědi: IIP", info)
+        mem["time"] = ""
+        mem["fails"]["IIP"] = hlidac.iso(now - timedelta(hours=4))        # selhává už přes 3 h → chyba zdroje
+        with self.assertRaises(RuntimeError):
+            hlidac.src_gas_outages(CFG, bad_net, mem)
+        mem["time"] = ""
+        ev, info, extra = hlidac.src_gas_outages(CFG, ok_net, mem)         # zase odpovídá → chyba zmizí
+        self.assertNotIn("dočasně", info)
+
+    def test_storage_keeps_last_data(self):
+        row = lambda full: json.dumps({"data": [{"gasDayStart": "2026-11-13", "full": full, "gasInStorage": "100",
+                                                 "injection": "0", "withdrawal": "500"}]}).encode()
+        mem = {}
+        hlidac.src_gas(CFG, FakeNet({"agsi.gie.eu": row("55")}), mem)
+        mem["time"] = hlidac.iso(hlidac.utcnow() - timedelta(hours=7))   # čas na obnovu, data 7 h stará
+        ev, info, extra = hlidac.src_gas(CFG, FakeNet({"agsi.gie.eu": self.WRAP}), mem)
+        self.assertIn("GIE teď neodpovídá", info)
+        self.assertEqual(extra["zeme"][0]["full"], 55)
+        mem["time"] = hlidac.iso(hlidac.utcnow() - timedelta(hours=13))  # moc stará data → chyba
+        with self.assertRaises(hlidac.GieTemporary):
+            hlidac.src_gas(CFG, FakeNet({"agsi.gie.eu": self.WRAP}), mem)
+
+
 if __name__ == "__main__":
     unittest.main()

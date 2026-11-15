@@ -679,25 +679,27 @@ def src_gas(cfg, fetch, mem):
     if not key:
         return [], "vypnuto – chybí klíč AGSI_KEY (zdarma po registraci na agsi.gie.eu)", {"zeme": []}
     now = utcnow()
+    note = ""
     if _due(mem, "time", c.get("refresh_hours", 6), now) or not mem.get("zeme"):
-        out = []
-        for z in c["zeme"]:
-            code = z["code"].upper()
-            q = "type=eu" if code == "EU" else f"country={code.lower()}"
-            raw = json.loads(fetch(f"{AGSI}?{q}&size=10", headers={"x-key": key}))
-            rows = raw.get("data") if isinstance(raw, dict) else raw
-            rows = [r for r in (rows or []) if isinstance(r, dict) and _num(r.get("full")) is not None]
-            if not rows:
-                raise RuntimeError(f"AGSI {code}: odpověď bez dat")
-            r = max(rows, key=lambda r: str(r.get("gasDayStart", "")))
-            twh = _num(r.get("gasInStorage"))
-            net = (_num(r.get("withdrawal")) or 0) - (_num(r.get("injection")) or 0)   # GWh/den, + = odběr
-            out.append({"code": code, "name": z.get("name", code),
-                        "region": z.get("region", code if code in ("CZ", "DE") else "EU"),
-                        "day": r.get("gasDayStart", ""), "full": round(_num(r.get("full")), 1), "twh": twh,
-                        "net_gwh": round(net), "trend": _num(r.get("trend")),
-                        "days": round(twh * 1000 / net) if twh and net > 50 else None})
-        mem["zeme"], mem["time"] = out, iso(now)
+        def refresh():
+            out = []
+            for z in c["zeme"]:
+                code = z["code"].upper()
+                q = "type=eu" if code == "EU" else f"country={code.lower()}"
+                rows = _gie_rows(fetch(f"{AGSI}?{q}&size=10", headers={"x-key": key}))
+                rows = [r for r in rows if _num(r.get("full")) is not None]
+                if not rows:
+                    raise RuntimeError(f"AGSI {code}: odpověď bez dat")
+                r = max(rows, key=lambda r: str(r.get("gasDayStart", "")))
+                twh = _num(r.get("gasInStorage"))
+                net = (_num(r.get("withdrawal")) or 0) - (_num(r.get("injection")) or 0)   # GWh/den, + = odběr
+                out.append({"code": code, "name": z.get("name", code),
+                            "region": z.get("region", code if code in ("CZ", "DE") else "EU"),
+                            "day": r.get("gasDayStart", ""), "full": round(_num(r.get("full")), 1), "twh": twh,
+                            "net_gwh": round(net), "trend": _num(r.get("trend")),
+                            "days": round(twh * 1000 / net) if twh and net > 50 else None})
+            mem["zeme"], mem["time"] = out, iso(now)
+        note = _keep_on_failure(mem, now, 12, refresh)
     events = []
     for g in mem["zeme"]:
         days = g.get("days")
@@ -712,7 +714,7 @@ def src_gas(cfg, fetch, mem):
             ev = make_event("Plyn (AGSI)", g["region"], lvl, f"Zásobníky plynu {g['name']}: {g['full']:.0f} %{dny}",
                             url="https://agsi.gie.eu/", eid=f"gas:{g['code']}:{lvl}", detail=GAS_ADVICE)
             events.append(ev)
-    info = ", ".join(f"{g['code']} {g['full']:.0f} %" for g in mem["zeme"])
+    info = ", ".join(f"{g['code']} {g['full']:.0f} %" for g in mem["zeme"]) + note
     return events, info, {"zeme": mem["zeme"], "time": mem.get("time", "")}
 
 
@@ -721,15 +723,47 @@ IIP = "https://iip.gie.eu/api"
 GIE_UNITS = {"gwh/d": 1, "mwh/d": 1e-3, "kwh/d": 1e-6, "gwh/h": 24, "mwh/h": 24e-3, "kwh/h": 24e-6}
 
 
-def _gie_rows(raw) -> list:
+class GieTemporary(RuntimeError):
+    """Server GIE vrátil místo dat svou vnitřní chybovou odpověď – obvykle přechodné přetížení."""
+
+
+def _gie_rows(raw, meta: dict | None = None) -> list:
     """Řádky z odpovědi GIE (AGSI/ALSI/IIP). Jiný formát = chyba, ne tiché „nic se neděje“."""
     j = json.loads(raw)
+    if isinstance(j, dict) and "statusCode" in j and "content" in j and "data" not in j:
+        # GIE občas vrátí serializovaný objekt odpovědi svého serveru (statusCode, content…) místo dat
+        inner = j.get("content")
+        try:
+            inner = json.loads(inner) if isinstance(inner, str) else inner
+        except ValueError:
+            inner = None
+        if isinstance(inner, list) or (isinstance(inner, dict) and "data" in inner):
+            j = inner
+        else:
+            raise GieTemporary(f"GIE dočasně neposlal data (kód {j.get('statusCode')})")
     if isinstance(j, dict) and j.get("error"):
         raise RuntimeError(f"GIE: {j['error']}"[:150])
+    if meta is not None and isinstance(j, dict):
+        meta.update({k: j.get(k) for k in ("last_page", "total")})
     rows = j.get("data", j) if isinstance(j, dict) else j
     if not isinstance(rows, list):
         raise RuntimeError("GIE: neznámý formát odpovědi " + (str(list(j)[:6]) if isinstance(j, dict) else type(j).__name__))
     return [r for r in rows if isinstance(r, dict)]
+
+
+def _keep_on_failure(mem, now, hours, fn):
+    """Obnov data; když server krátce nedodá, nech poslední známá data (max. `hours` hodin staré)."""
+    try:
+        fn()
+        mem.pop("fail_since", None)
+        return ""
+    except Exception as e:
+        last = parse_date(mem.get("time"))
+        since = parse_date(mem.get("fail_since")) or now
+        mem["fail_since"] = iso(since)
+        if last and now - last <= timedelta(hours=hours) and now - since <= timedelta(hours=hours):
+            return f" (poslední data z {last:%d. %m. %H:%M} UTC, GIE teď neodpovídá)"
+        raise e
 
 
 def _gwh(x):
@@ -764,23 +798,26 @@ def src_lng(cfg, fetch, mem):
     if not key:
         return [], "vypnuto – chybí klíč AGSI_KEY", {"zeme": []}
     now = utcnow()
+    note = ""
     if _due(mem, "time", c.get("refresh_hours", 6), now) or not mem.get("zeme"):
-        out = []
-        for z in c["zeme"]:
-            rows = _gie_rows(fetch(f"{ALSI}?country={z['code'].lower()}&size=30", headers={"x-key": key}))
-            rows = sorted((r for r in rows if _num(r.get("sendOut")) is not None and r.get("gasDayStart")),
-                          key=lambda r: str(r["gasDayStart"]), reverse=True)
-            if not rows:
-                raise RuntimeError(f"ALSI {z['code']}: odpověď bez dat")
-            cur = rows[0]
-            hist = sorted(_num(r["sendOut"]) for r in rows[1:15])
-            inv, cap = _gwh(cur.get("inventory")), _gwh(cur.get("dtmi"))
-            out.append({"code": z["code"].upper(), "name": z.get("name", z["code"]), "region": z.get("region", "EU"),
-                        "day": cur["gasDayStart"], "send": round(_num(cur["sendOut"])),
-                        "base": round(hist[len(hist) // 2]) if hist else None,
-                        "fill": round(inv / cap * 100) if inv is not None and cap else None,
-                        "cap": _num(cur.get("dtrs"))})
-        mem["zeme"], mem["time"] = out, iso(now)
+        def refresh():
+            out = []
+            for z in c["zeme"]:
+                rows = _gie_rows(fetch(f"{ALSI}?country={z['code'].lower()}&size=30", headers={"x-key": key}))
+                rows = sorted((r for r in rows if _num(r.get("sendOut")) is not None and r.get("gasDayStart")),
+                              key=lambda r: str(r["gasDayStart"]), reverse=True)
+                if not rows:
+                    raise RuntimeError(f"ALSI {z['code']}: odpověď bez dat")
+                cur = rows[0]
+                hist = sorted(_num(r["sendOut"]) for r in rows[1:15])
+                inv, cap = _gwh(cur.get("inventory")), _gwh(cur.get("dtmi"))
+                out.append({"code": z["code"].upper(), "name": z.get("name", z["code"]), "region": z.get("region", "EU"),
+                            "day": cur["gasDayStart"], "send": round(_num(cur["sendOut"])),
+                            "base": round(hist[len(hist) // 2]) if hist else None,
+                            "fill": round(inv / cap * 100) if inv is not None and cap else None,
+                            "cap": _num(cur.get("dtrs"))})
+            mem["zeme"], mem["time"] = out, iso(now)
+        note = _keep_on_failure(mem, now, 12, refresh)
     events = []
     for g in mem["zeme"]:
         base = g.get("base")
@@ -790,7 +827,7 @@ def src_lng(cfg, fetch, mem):
             events.append(make_event("LNG (ALSI)", g["region"], 1,
                                      f"Dovoz LNG – {g['name']}: {g['send']} GWh/d, obvykle {base} GWh/d",
                                      url="https://alsi.gie.eu/", eid=f"lng:{g['code']}", detail=LNG_ADVICE))
-    info = ", ".join(f"{g['code']} {g['send']} GWh/d (obvykle {g.get('base')})" for g in mem["zeme"])
+    info = ", ".join(f"{g['code']} {g['send']} GWh/d (obvykle {g.get('base')})" for g in mem["zeme"]) + note
     return events, info, {"zeme": mem["zeme"], "time": mem.get("time", "")}
 
 
@@ -806,26 +843,40 @@ def src_gas_outages(cfg, fetch, mem):
         return [], "vypnuto – chybí klíč AGSI_KEY", {"oblasti": [], "items": []}
     now = utcnow()
     h = {"x-key": key}
+    parts, fails = mem.setdefault("parts", {}), mem.setdefault("fails", {})
     if _due(mem, "time", c.get("refresh_minutes", 30) / 60, now) or "items" not in mem:
-        items = []
-        for z in c["zeme"]:
-            code = z["code"].upper()
-            for r in _gie_rows(fetch(f"{AGSI}/unavailability?country={code}&type=Unplanned&size=100", headers=h)):
-                if _running(r.get("start"), r.get("end"), now):
-                    items.append({"code": code, "kind": "zásobník", "name": _name(r.get("facility")) or "zásobník",
-                                  "gwh": _num(r.get("withdrawal")) or _num(r.get("injection")), "to": r.get("end"),
-                                  "pozn": str(r.get("description") or "")[:160]})
-            if z.get("lng"):
-                for r in _gie_rows(fetch(f"{ALSI}/unavailability?country={code}&type=Unplanned&size=100", headers=h)):
-                    if _running(r.get("start"), r.get("end"), now):
-                        items.append({"code": code, "kind": "LNG terminál", "name": _name(r.get("facility")) or "LNG terminál",
-                                      "gwh": _num(r.get("capacity")), "to": r.get("end"),
-                                      "pozn": str(r.get("description") or "")[:160]})
+        def run(key, fn):
+            try:
+                parts[key] = fn()
+                fails.pop(key, None)
+            except Exception as e:      # jedna část (třeba IIP) krátce neodpoví → zůstanou poslední známá data
+                since = parse_date(fails.get(key)) or now
+                fails[key] = iso(since)
+                if now - since > timedelta(hours=c.get("chyba_po_hodinach", 3)):
+                    raise RuntimeError(f"{key}: {e}"[:200])
+                parts.setdefault(key, [])
+
+        def agsi(code):
+            return [{"code": code, "kind": "zásobník", "name": _name(r.get("facility")) or "zásobník",
+                     "gwh": _num(r.get("withdrawal")) or _num(r.get("injection")), "to": r.get("end"),
+                     "pozn": str(r.get("description") or "")[:160]}
+                    for r in _gie_rows(fetch(f"{AGSI}/unavailability?country={code}&type=Unplanned&size=100", headers=h))
+                    if _running(r.get("start"), r.get("end"), now)]
+
+        def alsi(code):
+            return [{"code": code, "kind": "LNG terminál", "name": _name(r.get("facility")) or "LNG terminál",
+                     "gwh": _num(r.get("capacity")), "to": r.get("end"), "pozn": str(r.get("description") or "")[:160]}
+                    for r in _gie_rows(fetch(f"{ALSI}/unavailability?country={code}&type=Unplanned&size=100", headers=h))
+                    if _running(r.get("start"), r.get("end"), now)]
+
         # plynovody: IIP nemá filtr země – provozovatele přepravní soustavy poznáme podle názvu
         tso = [(re.compile(z["provozovatele"], re.I), z["code"].upper()) for z in c["zeme"] if z.get("provozovatele")]
-        if tso:
+
+        def iip():
+            out = []
             for page in range(1, c.get("iip_pages", 3) + 1):
-                rows = _gie_rows(fetch(f"{IIP}?status=active&reportingEntityType=TSO&size=300&page={page}", headers=h))
+                meta = {}
+                rows = _gie_rows(fetch(f"{IIP}?status=active&reportingEntityType=TSO&size=300&page={page}", headers=h), meta)
                 for r in rows:
                     msg = r.get("message") or {}
                     if "unplanned" not in str(msg.get("unavailabilityType", "")).lower():
@@ -838,11 +889,22 @@ def src_gas_outages(cfg, fetch, mem):
                     if not code:
                         continue
                     un = r.get("unavailable") or {}
-                    items.append({"code": code, "kind": "plynovod", "name": _name(asset) or _name(ent),
-                                  "gwh": _gwh_day(un.get("capacity"), un.get("unit")) if isinstance(un, dict) else None,
-                                  "to": r.get("to"), "pozn": str(r.get("unavailabilityReason") or r.get("remarks") or "")[:160]})
-                if len(rows) < 300:
+                    out.append({"code": code, "kind": "plynovod", "name": _name(asset) or _name(ent),
+                                "gwh": _gwh_day(un.get("capacity"), un.get("unit")) if isinstance(un, dict) else None,
+                                "to": r.get("to"), "pozn": str(r.get("unavailabilityReason") or r.get("remarks") or "")[:160]})
+                last_page = _num(meta.get("last_page"))
+                if len(rows) < 300 or (last_page is not None and page >= last_page):
                     break
+            return out
+
+        for z in c["zeme"]:
+            code = z["code"].upper()
+            run(f"AGSI {code}", lambda code=code: agsi(code))
+            if z.get("lng"):
+                run(f"ALSI {code}", lambda code=code: alsi(code))
+        if tso:
+            run("IIP", iip)
+        items = [dict(i) for v in parts.values() for i in v]
         for it in items:
             if it["gwh"] is not None:
                 it["gwh"] = round(it["gwh"])
@@ -863,6 +925,8 @@ def src_gas_outages(cfg, fetch, mem):
                                      detail="Největší: " + "; ".join(f"{i['name']} ({i['kind']}, {i['gwh']} GWh/d)" for i in top)
                                             + ". " + OUTAGE_NOTE))
     info = ", ".join(f"{r['code']} {r['gwh']} GWh/d ({r['n']})" for r in regions)
+    if fails:
+        info += f"; dočasně bez odpovědi: {', '.join(sorted(fails))} (drží se poslední data)"
     top = sorted(items, key=lambda i: -(i["gwh"] or 0))[:12]
     return events, info, {"oblasti": regions, "items": top, "time": mem.get("time", "")}
 
