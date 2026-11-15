@@ -1,0 +1,23 @@
+name: Sonda zdrojů (dočasná)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sonda:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ověřit zdroje
+        run: python3 .github/sonda.py > /tmp/sonda.json
+      - name: Uložit výsledek do větve sonda-vystup
+        run: |
+          cd /tmp && mkdir vystup && cd vystup && git init -q -b sonda-vystup
+          cp /tmp/sonda.json .
+          git config user.name "sonda" && git config user.email "sonda@users.noreply.github.com"
+          git add sonda.json && git commit -qm "výsledek sondy"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" sonda-vystup
