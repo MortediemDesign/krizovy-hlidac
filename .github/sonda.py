@@ -15,12 +15,13 @@ d14 = (now - timedelta(days=14)).strftime("%Y-%m-%d")
 UA = "KrizovyHlidac-sonda/1.0 (+https://github.com/)"
 J = {"Accept": "application/json"}
 URLS = [
-    ("epa_rad_doc", "https://data.epa.ie/api-list/radiation-monitoring-open-data/", None),
-    ("ren_daily_y", f"https://servicebus.ren.pt/datahubapi/electricity/ElectricityConsumptionSupplyDaily?culture=pt-PT&date={dy}", None),
-    ("ren_home", "https://datahub.ren.pt/pt/", "JS"),
-    ("radnet", "https://siradgeo.apambiente.pt/monitorizacao/emergencia/visao-global", "JS"),
-    ("anepc_q", "https://prociv-agserver.geomai.mai.gov.pt/arcgis/rest/services/Ocorrencias_Base/FeatureServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=3", "MOZ"),
-    ("epa_gdr", "https://epawebapp.epa.ie/Article27Register/GammaDoseRateNew.aspx", "JS"),
+    ("epa_meas", "https://data.epa.ie/radmon/api/v1/measurements?per_page=3", None),
+    ("epa_stations", "https://data.epa.ie/radmon/api/v1/stations", None),
+    ("epa_swagger", "https://data.epa.ie/radmon/swagger/", "JS"),
+    ("epa_swjson1", "https://data.epa.ie/radmon/swagger.json", None),
+    ("epa_swjson2", "https://data.epa.ie/radmon/api/v1/swagger.json", None),
+    ("ign_sismo", "https://www.ign.es/ign/RssTools/sismologia.xml", "ITEM"),
+    ("ren_home", "https://datahub.ren.pt/pt/", "CTX"),
 ]
 
 HINT = re.compile(r"""(?:href|src|action)=["']([^"']*(?:rss|feed|api|json|radmon|xml|service|arcgis)[^"']*)["']""", re.I)
@@ -69,6 +70,24 @@ for key, url, hdr in URLS:
         r["tvar"] = shape(js)
     except Exception:
         pass
+    if hdr == "ITEM":
+        r["polozky"] = re.findall(r"<item>.*?</item>", txt, re.S)[:2]
+    if hdr == "CTX":
+        import urllib.parse
+        ctx = []
+        h = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"}
+        for src in re.findall(r"""<script[^>]+src=["']([^"']+)["']""", txt)[:15]:
+            full = urllib.parse.urljoin(r.get("final") or url, src)
+            try:
+                with urllib.request.urlopen(urllib.request.Request(full, headers=h), timeout=30) as rs:
+                    js = rs.read(6_000_000).decode("utf-8", "replace")
+                for m in re.finditer(r"API_URL|baseURI|datahubapi|servicebus|Realtime|RealTime|tempo-real|tempoReal", js):
+                    ctx.append(full.rsplit("/", 1)[-1] + ": " + js[max(0, m.start() - 150): m.end() + 250])
+            except Exception as e:
+                ctx.append(f"!{full}: {type(e).__name__}")
+        for m in re.finditer(r"data-[a-z-]*(?:url|api|endpoint)[a-z-]*=[\"'][^\"']+[\"']", txt):
+            ctx.append("HTML: " + m.group(0)[:200])
+        r["ctx"] = ctx[:60]
     if hdr == "JS":
         import urllib.parse
         api = set()
