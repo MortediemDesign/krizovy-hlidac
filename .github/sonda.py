@@ -15,34 +15,12 @@ d14 = (now - timedelta(days=14)).strftime("%Y-%m-%d")
 UA = "KrizovyHlidac-sonda/1.0 (+https://github.com/)"
 J = {"Accept": "application/json"}
 URLS = [
-    ("ree_rt", f"https://apidatos.ree.es/es/datos/demanda/demanda-tiempo-real?start_date={d}T00:00&end_date={d}T23:59&time_trunc=hour", None),
-    ("boe_dnes", f"https://www.boe.es/datosabiertos/api/boe/sumario/{ymd}", J),
-    ("boe_vcera", f"https://www.boe.es/datosabiertos/api/boe/sumario/{ymd1}", J),
-    ("incibe", "https://www.incibe.es/incibe-cert/alerta-temprana/avisos/feed", None),
-    ("dsn_rss1", "https://www.dsn.gob.es/es/rss.xml", None),
-    ("dsn_home", "https://www.dsn.gob.es/es", None),
-    ("ign_sismo", "https://www.ign.es/ign/RssTools/sismologia.xml", None),
-    ("pcivil_home", "https://www.proteccioncivil.es/", None),
-    ("anepc_q", "https://prociv-agserver.geomai.mai.gov.pt/arcgis/rest/services/Ocorrencias_Base/FeatureServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=3", None),
-    ("anepc_srv", "https://prociv-agserver.geomai.mai.gov.pt/arcgis/rest/services?f=json", None),
-    ("fogos_act", "https://api.fogos.pt/v2/incidents/active?all=1", None),
-    ("fogos_new", "https://api.fogos.pt/new/fires", None),
-    ("prociv_home", "https://prociv.gov.pt/pt/", None),
-    ("ren_daily", f"https://servicebus.ren.pt/datahubapi/electricity/ElectricityConsumptionSupplyDaily?culture=pt-PT&date={d}", None),
-    ("ren_home", "https://datahub.ren.pt/pt/", None),
-    ("dre_home", "https://diariodarepublica.pt/dr/home", None),
-    ("dre_rss1", "https://diariodarepublica.pt/dr/rss/serie1", None),
-    ("cncs_alertas", "https://www.cncs.gov.pt/pt/alertas/", None),
-    ("ipma_sismo", "https://api.ipma.pt/open-data/observation/seismic/7.json", None),
-    ("radnet_home", "https://radnet.apambiente.pt/", None),
-    ("eir_act", f"https://www.smartgriddashboard.com/DashboardService.svc/data?area=demandactual&region=ROI&datefrom={ie}+00%3A00&dateto={ie}+23%3A59", None),
-    ("eir_fc", f"https://www.smartgriddashboard.com/DashboardService.svc/data?area=demandforecast&region=ROI&datefrom={ie}+00%3A00&dateto={ie}+23%3A59", None),
-    ("eir_home", "https://www.smartgriddashboard.com/", None),
-    ("oireachtas", f"https://api.oireachtas.ie/v1/legislation?date_start={d14}&limit=3", None),
-    ("ncsc_ie", "https://www.ncsc.gov.ie/news/alerts.rss", None),
-    ("epa_apis", "https://data.epa.ie/api-list/", None),
-    ("epa_radmon", "https://data.epa.ie/radmon/", None),
-    ("iris", "https://www.irisoifigiuil.ie/", None),
+    ("epa_rad_doc", "https://data.epa.ie/api-list/radiation-monitoring-open-data/", None),
+    ("ren_daily_y", f"https://servicebus.ren.pt/datahubapi/electricity/ElectricityConsumptionSupplyDaily?culture=pt-PT&date={dy}", None),
+    ("ren_home", "https://datahub.ren.pt/pt/", "JS"),
+    ("radnet", "https://siradgeo.apambiente.pt/monitorizacao/emergencia/visao-global", "JS"),
+    ("anepc_q", "https://prociv-agserver.geomai.mai.gov.pt/arcgis/rest/services/Ocorrencias_Base/FeatureServer/0/query?where=1%3D1&outFields=*&f=json&resultRecordCount=3", "MOZ"),
+    ("epa_gdr", "https://epawebapp.epa.ie/Article27Register/GammaDoseRateNew.aspx", "JS"),
 ]
 
 HINT = re.compile(r"""(?:href|src|action)=["']([^"']*(?:rss|feed|api|json|radmon|xml|service|arcgis)[^"']*)["']""", re.I)
@@ -52,7 +30,8 @@ out = {"cas": now.isoformat(), "vysledky": {}}
 for key, url, hdr in URLS:
     r = {"url": url}
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": UA, **(hdr or {})})
+        h = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"} if hdr in ("MOZ", "JS") else {"User-Agent": UA, **(hdr or {})}
+        req = urllib.request.Request(url, headers=h)
         with urllib.request.urlopen(req, timeout=30) as resp:
             raw = resp.read(3_000_000)
             r["status"] = resp.status
@@ -90,6 +69,21 @@ for key, url, hdr in URLS:
         r["tvar"] = shape(js)
     except Exception:
         pass
+    if hdr == "JS":
+        import urllib.parse
+        api = set()
+        for src in re.findall(r"""<script[^>]+src=["']([^"']+)["']""", txt)[:15]:
+            full = urllib.parse.urljoin(r.get("final") or url, src)
+            try:
+                q = urllib.request.Request(full, headers=h)
+                with urllib.request.urlopen(q, timeout=30) as rs:
+                    js = rs.read(6_000_000).decode("utf-8", "replace")
+                for m in re.findall(r"""["'`]([^"'`\s]*(?:api|Api|API|service|Service|json|arcgis|rest/)[^"'`\s]{0,120})["'`]""", js):
+                    if len(m) > 6 and not m.endswith((".css", ".png", ".svg")):
+                        api.add(m[:160])
+            except Exception as e:
+                api.add(f"!{full}: {type(e).__name__}")
+        r["js_api"] = sorted(api)[:150]
     out["vysledky"][key] = r
 
 print(json.dumps(out, ensure_ascii=False, indent=1))
