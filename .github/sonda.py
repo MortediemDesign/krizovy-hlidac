@@ -7,43 +7,21 @@ d = now.strftime("%Y-%m-%d")
 d1 = (now - timedelta(days=1)).strftime("%Y-%m-%d")
 d7 = (now - timedelta(days=7)).strftime("%Y-%m-%d")
 URLS = [
- ("ee_kriis_rss", "https://www.kriis.ee/rss-feeds/rss.xml"),
- ("lv_vestnesis_jl", "https://www.vestnesis.lv/feed/JL"),
- ("sk_mosr_rss", "https://www.mosr.sk/data/rss/aktuality.xml"),
- ("sk_vlada_rss", "https://www.vlada.gov.sk/rss/"),
- ("hu_honved_rss", "https://honvedelem.hu/rss.xml"),
- ("hu_katved_src", "https://www.katasztrofavedelem.hu/10198/rss-forrasok-a-bm-okf-oldalan"),
+ ("hu_kv_hirek", "https://www.katasztrofavedelem.hu/10417/RSS_hirek"),
+ ("hu_kv_kozl", "https://www.katasztrofavedelem.hu/10463/RSS_kozlemenyek"),
+ ("hu_kv_sug", "https://www.katasztrofavedelem.hu/10464/RSS_hattersugarzas"),
  ("hu_mk_feed", "https://magyarkozlony.hu/feed"),
- ("ro_transel", "https://www.transelectrica.ro/sen-filter"),
- ("lt_etar", "https://www.e-tar.lt/portal/lt/index"),
- ("lt_lrs", "https://www.lrs.lt/"),
- ("lt_kariuomene", "https://kariuomene.lt/"),
- ("lt_litgrid", "https://www.litgrid.eu/"),
- ("lt_lrt_rss", "https://www.lrt.lt/naujienos?rss"),
- ("lt_vrm", "https://vrm.lrv.lt/"),
- ("fi_finlex_list", "https://opendata.finlex.fi/finlex/avoindata/v1/akn/fi/act/statute/list?format=json&page=1&limit=5&sortBy=dateIssued&startYear=2026&endYear=2026&langAndVersion=fin%40&typeStatute=act&categoryStatute=new-statute"),
- ("fi_eduskunta", "https://www.eduskunta.fi/FI/rss-syotteet/Sivut/default.aspx"),
- ("fi_raja", "https://raja.fi/"),
- ("fi_fmi_cap", "https://alerts.fmi.fi/cap/feed/atom_fi-FI.xml"),
- ("fi_yle_rss", "https://yle.fi/rss/uutiset/paauutiset"),
- ("pl_bbn", "https://www.bbn.gov.pl/"),
- ("pl_bbn_rss", "https://www.bbn.gov.pl/pl/rss"),
- ("pl_wp", "https://www.wojsko-polskie.pl/"),
- ("pl_eli_mp", "https://api.sejm.gov.pl/eli/acts/search?publisher=MP&pubDateFrom=2026-11-01&limit=3"),
- ("pl_eli_du7", "https://api.sejm.gov.pl/eli/acts/search?publisher=DU&pubDateFrom=2026-11-08&limit=500"),
- ("ro_mai_feed", "https://www.mai.gov.ro/feed/"),
- ("ro_dsu", "https://www.dsu.mai.gov.ro/"),
- ("ro_mapn_rss", "https://www.mapn.ro/rss.php"),
- ("ro_cdep", "https://www.cdep.ro/"),
- ("ro_sgg", "https://sgg.gov.ro/"),
- ("lv_sargs", "https://www.sargs.lv/"),
- ("lv_mod_rss", "https://www.mod.gov.lv/lv/rss.xml"),
- ("lv_ast", "https://www.ast.lv/"),
- ("md_parlament", "https://www.parlament.md/"),
- ("md_moldelectrica", "https://moldelectrica.md/"),
- ("ee_valitsus_rss", "https://valitsus.ee/rss.xml"),
- ("ee_kaitse_rss", "https://kaitseministeerium.ee/et/rss.xml"),
- ("ee_paaste_rss", "https://www.rescue.ee/rss"),
+ ("md_gov_rss", "https://gov.md/ro/rss.xml"),
+ ("lv_ast_rss", "https://www.ast.lv/lv/rss.xml"),
+ ("ee_riigikogu", "https://www.riigikogu.ee/en/feed/"),
+ ("lt_lrt_en", "https://www.lrt.lt/en/news-in-english?rss"),
+ ("lt_lrt_rss2", "https://www.lrt.lt/rss"),
+ ("lt_seimas_rss", "https://www.lrs.lt/sip/portal.show?p_r=35403&p_k=1&rss=1"),
+ ("pl_pr24", "https://www.polskieradio24.pl/rss"),
+ ("pl_pap", "https://www.pap.pl/rss.xml"),
+ ("pl_pse_day", "https://api.raporty.pse.pl/api/kse-load?$filter=business_date%20eq%20%272026-11-15%27&$first=200"),
+ ("ee_elering_plan", "https://dashboard.elering.ee/api/system/with-plan?start=2026-11-15T00:00:00.000Z&end=2026-11-15T23:59:59.999Z"),
+ ("fi_yle_en", "https://yle.fi/rss/news"),
 ]
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 LINK = re.compile(r"""<link[^>]+type=["']application/(?:rss|atom)\+xml["'][^>]*>""", re.I)
@@ -75,12 +53,13 @@ def one(item):
         u = urllib.parse.urljoin(r.get("final") or url, h)
         if u not in feeds and not re.search(r"\.(css|js|png|svg|ico)(\?|$)|sitemap|xmlrpc|oembed|wp-json", u, re.I): feeds.append(u)
     r["kanaly"] = feeds[:25]
+    r["polozky"] = [re.sub(r"\s+", " ", x)[:900] for x in re.findall(r"<item[ >].*?</item>|<entry[ >].*?</entry>", t, re.S)[:2]]
     try:
         js = json.loads(t)
         def shape(o, dp=0):
             if dp > 4: return "…"
             if isinstance(o, dict): return {k: shape(v, dp + 1) for k, v in list(o.items())[:30]}
-            if isinstance(o, list): return [f"len={len(o)}", shape(o[0], dp + 1)] if o else []
+            if isinstance(o, list): return [f"len={len(o)}", shape(o[0], dp + 1), shape(o[1], dp + 1) if len(o) > 1 else None, shape(o[-1], dp + 1)] if o else []
             return repr(o)[:90]
         r["tvar"] = shape(js)
         if key == "pl_eli_openapi" or key == "ee_elering_docs":
