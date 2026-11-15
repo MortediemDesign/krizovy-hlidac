@@ -1023,8 +1023,10 @@
   },
   "anepc": {
     "enabled": true,
-    "pozn": "Zásahy portugalské civilní ochrany ANEPC přes fogos.pt (ANEPC sama data mimo Portugalsko nezveřejňuje). Velký zásah = aspoň 150 lidí nebo 4 letadla nebo označený jako významný.",
+    "pozn": "Zásahy portugalské civilní ochrany ANEPC přes fogos.pt (ANEPC sama data mimo Portugalsko nezveřejňuje). Velký zásah = aspoň 150 lidí nebo 4 letadla nebo označený jako významný. fogos.pt omezuje počet dotazů, proto se stahuje jednou za 20 minut a při odmítnutí platí 2 hodiny poslední data.",
     "region": "PT",
+    "kazdych_min": 20,
+    "drzet_hodin": 2,
     "velky_zasah_lidi": 150,
     "velky_zasah_letadel": 4,
     "pripravit_lidi_celkem": 2500

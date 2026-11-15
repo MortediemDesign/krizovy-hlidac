@@ -1243,17 +1243,34 @@ class TestRefugeSources(unittest.TestCase):
             hlidac.src_gazettes(CFG, FakeNet({today: b'{"data": {}}', yday: nf, "api.oireachtas.ie": b"[]"}), {})
 
     def test_anepc(self):
-        ev, info, extra = hlidac.src_anepc(CFG, FakeNet(refuge_routes()))
+        ev, info, extra = hlidac.src_anepc(CFG, FakeNet(refuge_routes()), {})
         self.assertEqual((ev, extra["n"], extra["lidi"]), ([], 2, 16))
         big = fogos_json([(320, 6, True, "Leiria"), (180, 2, False, "Viseu"), (5, 0, False, "Braga")])
-        ev, info, extra = hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": big}))
+        ev, info, extra = hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": big}), {})
         self.assertEqual([(e["region"], e["level"]) for e in ev], [("PT", 1)])
         self.assertIn("Leiria (320 lidí, 6 letadel)", ev[0]["title"])
         self.assertEqual(extra["zasahy"][0]["misto"], "Leiria")
         huge = fogos_json([(900, 8, True, "Leiria"), (800, 5, True, "Viseu"), (900, 3, True, "Guarda")])
-        self.assertEqual(hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": huge}))[0][0]["level"], 2)
+        self.assertEqual(hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": huge}), {})[0][0]["level"], 2)
         with self.assertRaises(RuntimeError):
-            hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": b'{"success": false}'}))
+            hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": b'{"success": false}'}), {})
+
+    def test_anepc_rate_limit(self):
+        big = fogos_json([(320, 6, True, "Leiria")])
+        mem = {}
+        ev, info, _ = hlidac.src_anepc(CFG, FakeNet({"api.fogos.pt": big}), mem)
+        self.assertEqual(len(ev), 1)
+        net = FakeNet({"api.fogos.pt": big})
+        self.assertEqual(len(hlidac.src_anepc(CFG, net, mem)[0]), 1)         # do 20 min se znovu nestahuje
+        self.assertEqual(net.calls, [])
+        mem["cas"] = hlidac.iso(hlidac.utcnow() - timedelta(minutes=30))
+        limited = FakeNet({"api.fogos.pt": urllib.error.HTTPError("u", 429, "Too Many Requests", {}, None)})
+        ev, info, _ = hlidac.src_anepc(CFG, limited, mem)
+        self.assertEqual(len(ev), 1)
+        self.assertIn("omezuje dotazy", info)
+        mem["cas"] = hlidac.iso(hlidac.utcnow() - timedelta(hours=3))
+        with self.assertRaises(urllib.error.HTTPError):
+            hlidac.src_anepc(CFG, limited, mem)
 
     def test_seismo(self):
         now = hlidac.utcnow().replace(microsecond=0)

@@ -1701,11 +1701,31 @@ def src_gazettes(cfg, fetch, mem):
     return events, info, {**parts, "zachyceno": [{**a, "key": k} for k, a in active.items()][:10]}
 
 
-def src_anepc(cfg, fetch):
-    """Portugalská civilní ochrana (ANEPC): probíhající zásahy přes fogos.pt, který data ANEPC zveřejňuje strojově."""
+def src_anepc(cfg, fetch, mem):
+    """Portugalská civilní ochrana (ANEPC): probíhající zásahy přes fogos.pt, který data ANEPC zveřejňuje strojově.
+    fogos.pt omezuje počet dotazů (HTTP 429): stahuje se jednou za `kazdych_min` a při odmítnutí platí poslední data."""
     c = cfg["anepc"]
     now = utcnow()
-    js = json.loads(fetch(c.get("url", FOGOS), timeout=25))
+    last = mem.get("vysledek")
+    last_t = parse_date(mem.get("cas"))
+    def cached(note):
+        ev, info, extra = last
+        return ev, info + note, extra
+    if last and not _due(mem, "cas", c.get("kazdych_min", 20) / 60, now):
+        return cached("")
+    try:
+        res = anepc_eval(c, fetch(c.get("url", FOGOS), timeout=25), now)
+    except Exception as e:
+        if last and last_t and now - last_t <= timedelta(hours=c.get("drzet_hodin", 2)):
+            why = "omezuje dotazy" if isinstance(e, urllib.error.HTTPError) and e.code == 429 else "neodpovídá"
+            return cached(f" (data z {last_t.astimezone(local_tz(cfg)):%H:%M}, fogos.pt teď {why})")
+        raise
+    mem["vysledek"], mem["cas"] = list(res), iso(now)
+    return res
+
+
+def anepc_eval(c, raw, now):
+    js = json.loads(raw)
     if not isinstance(js, dict) or not isinstance(js.get("data"), list):
         raise RuntimeError(f"fogos.pt: neznámý formát odpovědi {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
     inc = [i for i in js["data"] if isinstance(i, dict)]
