@@ -2097,7 +2097,7 @@ SOURCES = {
 # ───────────────────────── zprávy (RSS) ─────────────────────────
 
 def parse_feed(raw: bytes):
-    root = ET.fromstring(raw)
+    root = ET.fromstring(raw.lstrip(b"\xef\xbb\xbf \r\n\t"))     # některé weby posílají před deklarací prázdný řádek
     out = []
     for el in root.iter():
         if local(el.tag) not in ("item", "entry"):
@@ -3076,7 +3076,7 @@ def main():
                 print(f"::notice title=Zdroje {ok}/{len(st['sources'])}::" + ", ".join(
                     f"{s['key']} {'OK' if s['ok'] else 'CHYBA'}" for s in st["sources"]), flush=True)
                 public = ("noaa", "gas", "lng", "gasout", "ioda", "gdelt", "nukib", "psp", "easa", "mapa", "aa",
-                          "sit", "vestniky", "anepc", "seismo_ib")   # info bez míst a tras
+                          "sit", "vestniky", "anepc", "seismo_ib", "radiace_hu")   # info bez míst a tras
                 print("::notice title=Signály::" + " · ".join(
                     f"{s['key']}: {s['info']}" for s in st["sources"] if s["key"] in public and s["ok"]), flush=True)
                 for s in st["sources"]:

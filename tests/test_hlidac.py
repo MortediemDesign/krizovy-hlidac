@@ -330,7 +330,7 @@ def east_routes():
             "katasztrofavedelem.hu/10464": okf_rss([("Rétság", 129.66), ("Ózd", 110.2), ("Paks", 95.0)]),
             "api.sejm.gov.pl": eli_json(["Rozporządzenie Ministra Finansów w sprawie zezwoleń"]),
             "vestnesis.lv": rss([("Par Mareka Gruškevica komandējumu", None)]),
-            **{k: rss([]) for k in ("kriis.ee", "riigikogu.ee", "mod.gov.lv", "ast.lv", "lrt.lt", "yle.fi", "gov.md",
+            **{k: rss([]) for k in ("kriis.ee", "riigikogu.ee", "mod.gov.lv", "lrt.lt", "yle.fi", "gov.md",
                                     "mai.gov.ro", "mosr.sk", "vlada.gov.sk", "honvedelem.hu", "katasztrofavedelem.hu/10463")}}
 
 
@@ -1432,6 +1432,10 @@ class TestEastSources(unittest.TestCase):
         self.assertEqual([(e["region"], e["zeme"], e["level"]) for e in ev], [("EU", "HU", 2)])
         with self.assertRaises(RuntimeError):
             hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": rss([("x", None)])}))
+
+    def test_feed_with_leading_newline(self):
+        raw = b"\n" + rss([("Par \u0101rk\u0101rt\u0113j\u0101s situ\u0101cijas izsludin\u0101\u0161anu", None)])
+        self.assertEqual(len(hlidac.parse_feed(raw)), 1)
 
     def test_east_news_rules(self):
         rules = hlidac.compile_rules(CFG)

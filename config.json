@@ -418,12 +418,6 @@
         "zeme": "LV"
       },
       {
-        "id": "lv_ast",
-        "name": "AST – přenosová soustava",
-        "url": "https://www.ast.lv/lv/rss.xml",
-        "zeme": "LV"
-      },
-      {
         "id": "lrt_en",
         "name": "LRT (veřejnoprávní)",
         "url": "https://www.lrt.lt/en/news-in-english?rss",
@@ -720,7 +714,6 @@
           "kriis_ee",
           "riigikogu",
           "lv_mod",
-          "lv_ast",
           "lrt_en",
           "yle_en",
           "yle_fi",
@@ -757,12 +750,11 @@
         "single": 1,
         "confirmed": 1,
         "feeds": [
-          "lv_mod",
-          "lv_ast"
+          "lv_mod"
         ],
         "match": "dron[a-z]* .{0,40}(gaisa telp|robez|nokrit|uzbruk|ielidoj)|gaisa telp[a-z]* (parkap|aizskar)|robez[a-z]* .{0,30}(incident|slegs)|mobilizacij[a-z]* izsludin|iznemuma stavokl|uzbrukum|sabotaz|kabel[a-z]* .{0,30}(bojat|parrauts)|energosistem[a-z]* avarij|atslegum",
         "exclude": "iepirk|apkop|remont|iegade|konkurs|piegade|planot",
-        "note": "Úřední zdroj Lotyšska (ministerstvo obrany, provozovatel sítě)."
+        "note": "Úřední zpráva lotyšského ministerstva obrany."
       },
       {
         "id": "lt_lrt",
