@@ -1481,10 +1481,19 @@ def ree_points(fetch, day) -> list:
     return sorted(pts)
 
 
-def eirgrid_rows(fetch, area, region, day) -> list:
-    """EirGrid Smart Grid Dashboard: řada [(čas, MW)] pro jeden den (irský místní čas)."""
+def eirgrid_rows(fetch, area, region, day, retry_s=4) -> list:
+    """EirGrid Smart Grid Dashboard: řada [(čas, MW)] pro jeden den (irský místní čas).
+    Server při více dotazech za sebou občas vrátí 503 – jeden opakovaný pokus po pauze."""
     ds = f"{day.day:02d}-{MONTHS_EN[day.month - 1]}-{day.year}"
-    js = json.loads(fetch(f"{EIRGRID}?area={area}&region={region}&datefrom={ds}+00%3A00&dateto={ds}+23%3A59", timeout=25))
+    url = f"{EIRGRID}?area={area}&region={region}&datefrom={ds}+00%3A00&dateto={ds}+23%3A59"
+    try:
+        raw = fetch(url, timeout=25)
+    except urllib.error.HTTPError as e:
+        if e.code not in (429, 503) or not retry_s:
+            raise
+        time.sleep(retry_s)
+        raw = fetch(url, timeout=25)
+    js = json.loads(raw)
     if not isinstance(js, dict) or not isinstance(js.get("Rows"), list):
         raise RuntimeError(f"EirGrid: neznámý formát odpovědi {list(js)[:5] if isinstance(js, dict) else type(js).__name__}")
     if js.get("ErrorMessage"):
@@ -1520,9 +1529,18 @@ def src_grid_refuges(cfg, fetch, mem):
                 reg = s.get("oblast", "ROI")
                 day = now.astimezone(_tz("Europe/Dublin", 0)).date()
                 fc = mem.setdefault("eirgrid_fc", {}).setdefault(reg, {})
-                for t, v in eirgrid_rows(fetch, "demandforecast", reg, day):   # předpověď jen dopředu → schovat si ji
-                    if v:
-                        fc[iso(t)] = v
+                due_key = f"eirgrid_fc_cas_{reg}"
+                if _due(mem, due_key, c.get("predpoved_kazdych_h", 1), now) or not any(
+                        parse_date(k) and parse_date(k) > now for k in fc):
+                    try:      # předpověď je jen dopředu → schovat si ji; stačí jednou za hodinu
+                        for t, v in eirgrid_rows(fetch, "demandforecast", reg, day):
+                            if v:
+                                fc[iso(t)] = v
+                        mem[due_key] = iso(now)
+                    except Exception as e:
+                        if not fc:
+                            raise
+                        errors.append(f"{s.get('name', reg)} předpověď: {type(e).__name__}"[:80])
                 for k in [k for k in fc if now - (parse_date(k) or now) > timedelta(hours=36)]:
                     del fc[k]
                 act = [(t, v) for t, v in eirgrid_rows(fetch, "demandactual", reg, day) if v is not None]

@@ -1183,6 +1183,28 @@ class TestRefugeSources(unittest.TestCase):
         self.assertEqual(ev, [])
         self.assertNotIn("ES", [x["code"] for x in extra["site"]])
 
+    def test_eirgrid_retry_and_hourly_forecast(self):
+        routes, _ = eir_routes([4000, 4010, 4020])
+        calls = {"n": 0}
+        def flaky():
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise urllib.error.HTTPError("u", 503, "Service Unavailable", {}, None)
+            return routes["area=demandactual"]
+        r = {**refuge_routes(), "area=demandactual": flaky}
+        orig, hlidac.time.sleep = hlidac.time.sleep, lambda s: None
+        try:
+            mem = {}
+            net = FakeNet(r)
+            _, info, extra = hlidac.src_grid_refuges(CFG, net, mem)
+            self.assertNotIn("nefunguje", info)
+            self.assertEqual(calls["n"], 2)
+            net2 = FakeNet(r)
+            hlidac.src_grid_refuges(CFG, net2, mem)            # předpověď se do hodiny znovu nestahuje
+            self.assertFalse(any("demandforecast" in u for u, _ in net2.calls))
+        finally:
+            hlidac.time.sleep = orig
+
     def test_grid_errors(self):
         r = {**refuge_routes(), "apidatos.ree.es": b'{"errors": [{"detail": "x"}]}'}
         ev, info, extra = hlidac.src_grid_refuges(CFG, FakeNet(r), {})
