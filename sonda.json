@@ -1,0 +1,146 @@
+[
+ {
+  "i": 0,
+  "cas": "08:50:33",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 1,
+  "cas": "08:51:00",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 2,
+  "cas": "08:51:27",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 3,
+  "cas": "08:51:53",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 4,
+  "cas": "08:52:19",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 5,
+  "cas": "08:52:45",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 6,
+  "cas": "08:53:12",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 7,
+  "cas": "08:53:38",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 8,
+  "cas": "08:54:04",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 9,
+  "cas": "08:54:30",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 10,
+  "cas": "08:54:56",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 11,
+  "cas": "08:55:23",
+  "delka": 70097,
+  "polozek": 160,
+  "nsv": 160,
+  "ok": true
+ },
+ {
+  "i": 12,
+  "cas": "08:55:49",
+  "delka": 820,
+  "polozek": 0,
+  "nsv": 0,
+  "ok": false,
+  "chyba": "RuntimeError: BM OKF: v kanálu nejsou měření – změnil se formát?",
+  "zacatek": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<?xml-stylesheet href=\"https://www.katasztrofavedelem.hu/application/templates/default/css/katved_rss.xsl\" type=\"text/xsl\" media=\"screen\"?>\n<rss version=\"2.0\">\n<channel>\n<title>BM OKF</title>\n<link>https://www.katasztrofavedelem.hu/</link>\n<description>BM Országos Katasztrófavédelmi Főigazgatóság</description>\n<language>hu</language>\n<category>Emergency Informations</category>\n<copyright>Valamennyi közlemény ingyenesen és szabadon felhasználható, de kizárólag az BM OKF, mint hírforrás feltüntetésével.</copyright>\n<managingEditor>okf.kommunikacio@katved.gov.hu (BM OKF)</managingEditor>\n<webMaster>okfweb@rsoe.hu (RSOE)</webMaster>\n<ttl>5</ttl>\n<logo>https://www.katasztrofavedelem.hu/application/templates/default/images/okf_logo.png</logo>\n</channel></rss>",
+  "polozky": [],
+  "konec": "tions</category>\n<copyright>Valamennyi közlemény ingyenesen és szabadon felhasználható, de kizárólag az BM OKF, mint hírforrás feltüntetésével.</copyright>\n<managingEditor>okf.kommunikacio@katved.gov.hu (BM OKF)</managingEditor>\n<webMaster>okfweb@rsoe.hu (RSOE)</webMaster>\n<ttl>5</ttl>\n<logo>https://www.katasztrofavedelem.hu/application/templates/default/images/okf_logo.png</logo>\n</channel></rss>"
+ },
+ {
+  "i": 13,
+  "cas": "08:56:17",
+  "delka": 820,
+  "polozek": 0,
+  "nsv": 0,
+  "ok": false,
+  "chyba": "RuntimeError: BM OKF: v kanálu nejsou měření – změnil se formát?",
+  "zacatek": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<?xml-stylesheet href=\"https://www.katasztrofavedelem.hu/application/templates/default/css/katved_rss.xsl\" type=\"text/xsl\" media=\"screen\"?>\n<rss version=\"2.0\">\n<channel>\n<title>BM OKF</title>\n<link>https://www.katasztrofavedelem.hu/</link>\n<description>BM Országos Katasztrófavédelmi Főigazgatóság</description>\n<language>hu</language>\n<category>Emergency Informations</category>\n<copyright>Valamennyi közlemény ingyenesen és szabadon felhasználható, de kizárólag az BM OKF, mint hírforrás feltüntetésével.</copyright>\n<managingEditor>okf.kommunikacio@katved.gov.hu (BM OKF)</managingEditor>\n<webMaster>okfweb@rsoe.hu (RSOE)</webMaster>\n<ttl>5</ttl>\n<logo>https://www.katasztrofavedelem.hu/application/templates/default/images/okf_logo.png</logo>\n</channel></rss>",
+  "polozky": [],
+  "konec": "tions</category>\n<copyright>Valamennyi közlemény ingyenesen és szabadon felhasználható, de kizárólag az BM OKF, mint hírforrás feltüntetésével.</copyright>\n<managingEditor>okf.kommunikacio@katved.gov.hu (BM OKF)</managingEditor>\n<webMaster>okfweb@rsoe.hu (RSOE)</webMaster>\n<ttl>5</ttl>\n<logo>https://www.katasztrofavedelem.hu/application/templates/default/images/okf_logo.png</logo>\n</channel></rss>"
+ },
+ {
+  "i": 14,
+  "cas": "08:56:42",
+  "delka": 820,
+  "polozek": 0,
+  "nsv": 0,
+  "ok": false,
+  "chyba": "RuntimeError: BM OKF: v kanálu nejsou měření – změnil se formát?",
+  "zacatek": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<?xml-stylesheet href=\"https://www.katasztrofavedelem.hu/application/templates/default/css/katved_rss.xsl\" type=\"text/xsl\" media=\"screen\"?>\n<rss version=\"2.0\">\n<channel>\n<title>BM OKF</title>\n<link>https://www.katasztrofavedelem.hu/</link>\n<description>BM Országos Katasztrófavédelmi Főigazgatóság</description>\n<language>hu</language>\n<category>Emergency Informations</category>\n<copyright>Valamennyi közlemény ingyenesen és szabadon felhasználható, de kizárólag az BM OKF, mint hírforrás feltüntetésével.</copyright>\n<managingEditor>okf.kommunikacio@katved.gov.hu (BM OKF)</managingEditor>\n<webMaster>okfweb@rsoe.hu (RSOE)</webMaster>\n<ttl>5</ttl>\n<logo>https://www.katasztrofavedelem.hu/application/templates/default/images/okf_logo.png</logo>\n</channel></rss>",
+  "polozky": [],
+  "konec": "tions</category>\n<copyright>Valamennyi közlemény ingyenesen és szabadon felhasználható, de kizárólag az BM OKF, mint hírforrás feltüntetésével.</copyright>\n<managingEditor>okf.kommunikacio@katved.gov.hu (BM OKF)</managingEditor>\n<webMaster>okfweb@rsoe.hu (RSOE)</webMaster>\n<ttl>5</ttl>\n<logo>https://www.katasztrofavedelem.hu/application/templates/default/images/okf_logo.png</logo>\n</channel></rss>"
+ },
+ {
+  "i": 15,
+  "cas": "08:57:08",
+  "delka": 820,
+  "polozek": 0,
+  "nsv": 0,
+  "ok": false,
+  "chyba": "RuntimeError: BM OKF: v kanálu nejsou měření – změnil se formát?",
+  "zacatek": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<?xml-stylesheet href=\"https://www.katasztrofavedelem.hu/application/templates/default/css/katved_rss.xsl\" type=\"text/xsl\" media=\"screen\"?>\n<rss version=\"2.0\">\n<channel>\n<title>BM OKF</title>\n<link>https://www.katasztrofavedelem.hu/</link>\n<description>BM Országos Katasztrófavédelmi Főigazgatóság</description>\n<language>hu</language>\n<category>Emergency Informations</category>\n<copyright>Valamennyi közlemény ingyenesen és szabadon felhasználható, de kizárólag az BM OKF, mint hírforrás feltüntetésével.</copyright>\n<managingEditor>okf.kommunikacio@katved.gov.hu (BM OKF)</managingEditor>\n<webMaster>okfweb@rsoe.hu (RSOE)</webMaster>\n<ttl>5</ttl>\n<logo>https://www.katasztrofavedelem.hu/application/templates/default/images/okf_logo.png</logo>\n</channel></rss>",
+  "polozky": [],
+  "konec": "tions</category>\n<copyright>Valamennyi közlemény ingyenesen és szabadon felhasználható, de kizárólag az BM OKF, mint hírforrás feltüntetésével.</copyright>\n<managingEditor>okf.kommunikacio@katved.gov.hu (BM OKF)</managingEditor>\n<webMaster>okfweb@rsoe.hu (RSOE)</webMaster>\n<ttl>5</ttl>\n<logo>https://www.katasztrofavedelem.hu/application/templates/default/images/okf_logo.png</logo>\n</channel></rss>"
+ }
+]
