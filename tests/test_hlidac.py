@@ -1421,21 +1421,37 @@ class TestEastSources(unittest.TestCase):
         self.assertEqual(sorted({u.split("publisher=")[1].split("&")[0] for u, _ in net.calls if "sejm" in u}), ["DU", "MP"])
 
     def test_radiation_hu(self):
-        ev, info, extra = hlidac.src_radiation_hu(CFG, FakeNet(east_routes()))
+        ev, info, extra = hlidac.src_radiation_hu(CFG, FakeNet(east_routes()), {})
         self.assertEqual(ev, [])
         self.assertEqual((extra["zona"]["n"], extra["zona"]["max_name"]), (3, "Rétság"))
         self.assertIn("medián 0,11 µSv/h", info)
         one = okf_rss([("Paks", 900), ("Ózd", 110), ("Szekszárd", 120)])
-        self.assertEqual(hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": one}))[0], [])   # jedna sonda nestačí
+        self.assertEqual(hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": one}), {})[0], [])   # jedna sonda nestačí
         two = okf_rss([("Paks", 2500), ("Szekszárd", 2100), ("Ózd", 110)])
-        ev, _, _ = hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": two}))
+        ev, _, _ = hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": two}), {})
         self.assertEqual([(e["region"], e["zeme"], e["level"]) for e in ev], [("EU", "HU", 2)])
         with self.assertRaises(RuntimeError):
-            hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": rss([("x", None)])}))
+            hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": rss([("x", None)])}), {})
 
     def test_feed_with_leading_newline(self):
         raw = b"\n" + rss([("Par \u0101rk\u0101rt\u0113j\u0101s situ\u0101cijas izsludin\u0101\u0161anu", None)])
         self.assertEqual(len(hlidac.parse_feed(raw)), 1)
+
+    def test_radiation_hu_empty_feed_keeps_last(self):
+        empty = (b'<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet href="x.xsl" type="text/xsl"?>\n'
+                 b'<rss version="2.0"><channel><title>BM OKF</title><ttl>5</ttl></channel></rss>')
+        mem = {}
+        two = okf_rss([("Paks", 2500), ("Szekszárd", 2100), ("Ózd", 110)])
+        self.assertEqual(len(hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": two}), mem)[0]), 1)
+        ev, info, extra = hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": empty}), mem)
+        self.assertEqual(len(ev), 1)                                   # varování trvá, kanál se jen obnovuje
+        self.assertIn("kanál se právě obnovuje", info)
+        self.assertEqual(extra["zona"]["n"], 3)
+        mem["cas"] = hlidac.iso(hlidac.utcnow() - timedelta(hours=3))
+        with self.assertRaises(hlidac.OkfEmpty):
+            hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": empty}), mem)
+        with self.assertRaises(hlidac.OkfEmpty):
+            hlidac.src_radiation_hu(CFG, FakeNet({"katasztrofavedelem.hu/10464": empty}), {})
 
     def test_east_news_rules(self):
         rules = hlidac.compile_rules(CFG)

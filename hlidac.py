@@ -1931,10 +1931,32 @@ RAD_EAST_ADVICE = ("Zvýšená radiace na více sondách v Maďarsku (u Paksu je
                    "měj připravené jódové tablety jen podle pokynů úřadů a plán, kde se ukrýt.")
 
 
-def src_radiation_hu(cfg, fetch):
-    """Radiace v Maďarsku: dávkový příkon z měřicí sítě maďarské civilní ochrany (BM OKF), asi 150 stanic."""
+def src_radiation_hu(cfg, fetch, mem):
+    """Radiace v Maďarsku: dávkový příkon z měřicí sítě maďarské civilní ochrany (BM OKF), asi 150 stanic.
+    Kanál se každou chvíli na pár minut vyprázdní (přegenerovává se) – pak platí poslední měření."""
     c = cfg["radiace_hu"]
-    root = ET.fromstring(fetch(c.get("url", OKF_SUGARZAS), timeout=25))
+    now = utcnow()
+    try:
+        res = radiation_hu_eval(c, fetch(c.get("url", OKF_SUGARZAS), timeout=25))
+    except Exception as e:
+        last, last_t = mem.get("vysledek"), parse_date(mem.get("cas"))
+        if last and last_t and now - last_t <= timedelta(hours=c.get("drzet_hodin", 2)):
+            why = "se právě obnovuje" if isinstance(e, OkfEmpty) else "neodpovídá"
+            ev, info, extra = last
+            return ev, info + f" (měření z {last_t.astimezone(local_tz(cfg)):%H:%M}, kanál {why})", extra
+        raise
+    mem["vysledek"], mem["cas"] = list(res), iso(now)
+    return res
+
+
+class OkfEmpty(RuntimeError):
+    pass
+
+
+def radiation_hu_eval(c, raw):
+    root = ET.fromstring(raw.lstrip(b"\xef\xbb\xbf \r\n\t"))
+    if not any(True for _ in root.iter("item")):
+        raise OkfEmpty("BM OKF: kanál je prázdný (přegenerovává se)")
     latest = {}
     for it in root.iter("item"):
         title, desc = child_text(it, "title"), child_text(it, "description")

@@ -1292,11 +1292,12 @@
   },
   "radiace_hu": {
     "enabled": true,
-    "pozn": "Dávkový příkon z asi 150 stanic maďarské civilní ochrany (u Paksu je jaderná elektrárna). Aspoň `min_stanic` nad `warn_nsvh` = Sleduj, nad `alarm_nsvh` = Připrav se. Běžné pozadí je 80–200 nSv/h.",
+    "pozn": "Dávkový příkon z asi 150 stanic maďarské civilní ochrany (u Paksu je jaderná elektrárna). Aspoň `min_stanic` nad `warn_nsvh` = Sleduj, nad `alarm_nsvh` = Připrav se. Běžné pozadí je 80–200 nSv/h. Kanál se každou chvíli na pár minut vyprázdní, pak platí až `drzet_hodin` poslední měření.",
     "url": "https://www.katasztrofavedelem.hu/10464/RSS_hattersugarzas",
     "warn_nsvh": 600,
     "alarm_nsvh": 2000,
     "min_stanic": 2,
+    "drzet_hodin": 2,
     "region": "EU",
     "zeme": "HU"
   },
