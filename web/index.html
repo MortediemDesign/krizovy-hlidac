@@ -248,6 +248,23 @@ details > summary small{font:400 .9rem var(--text);color:var(--muted)}
 .task.done::after{content:"";width:9px;height:5px;border:solid #fff;border-width:0 0 2.5px 2.5px;transform:rotate(-45deg) translate(1px,-1px)}
 .task.opt{border-style:dashed}
 .lists details > summary{font-size:1.15rem}
+.task{cursor:default}
+button.task{padding:0;background:transparent;cursor:pointer}
+button.task.done{background:var(--l0)}
+.editbar{display:flex;gap:8px;margin-top:6px}
+.lnk{font:600 .9rem var(--text);padding:0;border:0;background:none;color:var(--ink);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+.editform{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.editform input,.editform select{font:400 1rem var(--text);padding:9px 10px;border-radius:6px;border:1px solid var(--line);background:var(--raise);color:var(--ink);min-width:0}
+.editform input[type=text],.editform input[type=password]{flex:1 1 200px}
+.editform .chk{display:flex;gap:6px;align-items:center;font-weight:600}
+.editform .btn{padding:8px 12px}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn.danger{color:var(--l3);border-color:currentColor}
+.editmsg{flex-basis:100%;margin:2px 0 0;font-size:.92rem;color:var(--muted)}
+.editmsg:empty{display:none}
+.editmsg.err{color:var(--l3)}
+.steps{margin:6px 0 10px;padding-left:22px;font-size:.95rem}
+.steps li{margin:3px 0}
 .prog{height:6px;border-radius:3px;background:var(--raise);margin:-6px 0 12px;overflow:hidden}
 .prog i{display:block;height:100%;background:var(--ink);border-radius:3px}
 
@@ -402,12 +419,18 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       <ul class="rows" id="docs"></ul>
       <p class="sub" id="h-task">Vyřídit před cestou</p>
       <ul class="rows" id="tasks"></ul>
+      <div id="prep-add"></div>
+      <p class="editmsg" id="prep-note" role="status"></p>
     </section>
     <section aria-labelledby="h-lists">
       <h2 id="h-lists">Seznamy na 72 hodin</h2>
       <div class="lists" id="lists"></div>
       <p class="attr">Zaškrtnutí si pamatuje jen tento telefon. Podklady: příručka
         <a href="https://www.72h.gov.cz/" target="_blank" rel="noopener">72 hodin</a> Ministerstva vnitra.</p>
+    </section>
+    <section aria-labelledby="h-edit" id="s-edit">
+      <h2 id="h-edit">Úpravy z webu</h2>
+      <div id="gh"></div>
     </section>
   </div>
 
@@ -767,8 +790,221 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       `zmínka může být i o útočníkovi, ne jen o zasažené zemi. Podklad mapy: Natural Earth.`;
   }
 
+  // ── Úpravy přípravy z webu: šifrovaný soubor upravy.enc.json v repu, zápis přes GitHub API ──
+  const PREP_TEXT = {propadle:"propadlé", brzy:"brzy končí", chybi_datum:"chybí datum", nevyrizeno:"nevyřízeno",
+    volitelne:"až bude potřeba", ok:"v pořádku"};
+  const EDITS = "upravy.enc.json";
+  let prepEditing = false;
+  let pending = (() => { try { return JSON.parse(store.get("pend") || "null"); } catch(e) { return null; } })();
+  const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const daysTo = iso => Math.round((Date.parse(iso + "T00:00:00Z") - Date.parse(todayIso() + "T00:00:00Z")) / 864e5);
+  function restate(i, warn){
+    if (i.druh === "platnost") {
+      if (!i.plati_do) { i.dni = null; i.stav = "chybi_datum"; }
+      else { i.dni = daysTo(i.plati_do); i.stav = i.dni < 0 ? "propadle" : i.dni <= warn ? "brzy" : "ok"; }
+    } else if (i.hotovo != null) i.stav = i.hotovo ? "ok" : (i.volitelne ? "volitelne" : "nevyrizeno");
+    i.stav_text = PREP_TEXT[i.stav] || i.stav_text;
+  }
+  function prepLocal(items, ed, warn){
+    let out = items.map(i => ({...i}));
+    for (const n of ed.nove || []) if (!out.some(i => i.id === n.id))
+      out.push({id:n.id, nazev:n.nazev, druh: n.druh === "platnost" ? "platnost" : "ukol", plati_do: n.plati_do || null,
+                hotovo: !!n.hotovo, pozn: n.pozn || "", odkaz:"", vlastni:true});
+    for (const i of out) {
+      const ch = (ed.polozky || {})[i.id];
+      if (ch) {
+        if ("plati_do" in ch && i.druh === "platnost") i.plati_do = ch.plati_do || null;
+        if ("hotovo" in ch && i.druh !== "platnost") i.hotovo = !!ch.hotovo;
+        if ("pozn" in ch) i.pozn = ch.pozn || "";
+      }
+    }
+    const hidden = new Set(ed.skryte || []);
+    out = out.filter(i => !hidden.has(i.id));
+    out.forEach(i => restate(i, warn));
+    return out;
+  }
+  // Než hlídač úpravu zpracuje (pár minut), ukazuj ji rovnou – a pak už platí stav z hlídače.
+  function withPending(s){
+    if (!pending) return s;
+    const done = s.upravy && s.upravy.upraveno && s.upravy.upraveno >= pending.upraveno;
+    const old = Date.now() - Date.parse(pending.upraveno) > 6 * 3600e3;
+    if (done || old) { pending = null; store.del("pend"); return s; }
+    return {...s, pripravenost: prepLocal(s.pripravenost || [], pending, (s.upravy || {}).varovat_dni || 60), _pending: true};
+  }
+  const repoOf = s => (s && s.upravy && s.upravy.repo) ||
+    (/\.github\.io$/.test(location.hostname) ? `${location.hostname.split(".")[0]}/${location.pathname.split("/").filter(Boolean)[0] || ""}` : "");
+  const b64e = u => { let x = ""; for (let k = 0; k < u.length; k += 8192) x += String.fromCharCode(...u.subarray(k, k + 8192)); return btoa(x); };
+  async function encrypt(obj, pass){
+    const salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+    const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+    const key = await crypto.subtle.deriveKey({name:"PBKDF2", salt, iterations:200000, hash:"SHA-256"},
+      base, {name:"AES-GCM", length:256}, false, ["encrypt"]);
+    const ct = new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM", iv}, key, new TextEncoder().encode(JSON.stringify(obj))));
+    return {v:1, kdf:"PBKDF2-SHA256", iter:200000, salt:b64e(salt), iv:b64e(iv), ct:b64e(ct)};
+  }
+  async function ghSave(mutate){
+    const gh = store.get("gh"), repo = repoOf(last);
+    if (!repo) throw new Error("norepo");
+    const hdr = {Authorization:`Bearer ${gh}`, Accept:"application/vnd.github+json", "X-GitHub-Api-Version":"2022-11-28"};
+    const url = `https://api.github.com/repos/${repo}/contents/${EDITS}`;
+    let sha = null, ed = {v:1, polozky:{}, nove:[], skryte:[]};
+    const r = await fetch(`${url}?ref=main&t=${Date.now()}`, {headers:hdr, cache:"no-store"});
+    if (r.status === 401) throw new Error("gh401");
+    if (r.ok) {
+      const j = await r.json();
+      sha = j.sha;
+      try { ed = await decrypt(JSON.parse(atob(j.content.replace(/\s/g, ""))), token); }
+      catch(e) { throw new Error("badfile"); }
+      ed.polozky ||= {}; ed.nove ||= []; ed.skryte ||= [];
+    } else if (r.status !== 404) throw new Error("gh" + r.status);
+    mutate(ed);
+    ed.upraveno = new Date().toISOString();
+    const body = {message:"Příprava: úprava z webu", content: btoa(JSON.stringify(await encrypt(ed, token))), branch:"main"};
+    if (sha) body.sha = sha;
+    const p = await fetch(url, {method:"PUT", headers:{...hdr, "Content-Type":"application/json"}, body: JSON.stringify(body)});
+    if (!p.ok) throw new Error("gh" + p.status);
+    return ed;
+  }
+  const ghError = e => ({
+    gh401: "GitHub token neplatí nebo vypršel. Vlož nový v části Úpravy z webu.",
+    gh403: "Token nemá právo zapisovat. Při vytváření mu dej u repa krizovy-hlidac oprávnění Contents: Read and write.",
+    gh404: "Token nevidí repo krizovy-hlidac. Vytvoř ho znovu s přístupem k tomuto repu.",
+    gh422: "GitHub úpravu odmítl. Zkus to znovu.",
+    badfile: "Soubor s úpravami nejde otevřít kódem, kterým máš web odemčený.",
+    norepo: "Nevím, do kterého repa ukládat. Otevři web přes GitHub Pages.",
+  })[e.message] || (e.message && e.message.startsWith("gh") ? `GitHub odpověděl chybou ${e.message.slice(2)}. Zkus to znovu.`
+    : "Nepodařilo se uložit. Zkontroluj připojení a zkus to znovu.");
+  async function commit(mutate, msg, okText){
+    if (!store.get("gh")) {
+      msg.className = "editmsg err"; msg.textContent = "Nejdřív vlož GitHub token v části Úpravy z webu níže.";
+      const g = $("s-edit"); if (g) g.scrollIntoView({behavior:"smooth", block:"start"});
+      return false;
+    }
+    msg.className = "editmsg"; msg.textContent = "Ukládám…";
+    try {
+      let ed;
+      try { ed = await ghSave(mutate); }
+      catch(e) { if (e.message === "gh409") ed = await ghSave(mutate); else throw e; }   // souběžná úprava: načti znovu
+      pending = ed; store.set("pend", JSON.stringify(ed));
+      prepEditing = false;
+      render(last);
+      const note = $("prep-note");
+      note.className = "editmsg";
+      note.textContent = `${okText || "Uloženo."} Hlídač změnu zapracuje do upozornění při dalším běhu, obvykle do 5 minut.`;
+      return true;
+    } catch(e) {
+      msg.className = "editmsg err"; msg.textContent = ghError(e);
+      return false;
+    }
+  }
+  function editBar(i, li){
+    const btn = el("button", {type:"button", class:"lnk", text:"Upravit"});
+    const bar = el("div", {class:"wide editbar"}, btn);
+    btn.addEventListener("click", () => { bar.replaceWith(editForm(i, bar)); });
+    return bar;
+  }
+  function editForm(i, bar){
+    prepEditing = true;
+    const isDoc = i.druh === "platnost";
+    const f = el("form", {class:"wide editform"});
+    const date = isDoc ? el("input", {type:"date", value: i.plati_do || "", "aria-label":"Platí do"}) : null;
+    const doneCb = isDoc ? null : el("input", {type:"checkbox"});
+    if (doneCb) doneCb.checked = i.stav === "ok";
+    const note = el("input", {type:"text", value: i.pozn || "", placeholder:"Poznámka", "aria-label":"Poznámka"});
+    const msg = el("p", {class:"editmsg", role:"status"});
+    const cancel = el("button", {type:"button", class:"btn", text:"Zrušit"});
+    const del = el("button", {type:"button", class:"btn danger", text:"Odebrat"});
+    f.append(...[date, doneCb && el("label", {class:"chk"}, doneCb, "Hotovo"), note,
+      el("button", {type:"submit", class:"btn primary", text:"Uložit"}), cancel, del, msg].filter(Boolean));
+    cancel.addEventListener("click", () => { prepEditing = false; render(last); });
+    let armed = false;
+    del.addEventListener("click", () => {
+      if (!armed) { armed = true; del.textContent = "Opravdu odebrat?"; return; }
+      commit(ed => {
+        if (i.vlastni) ed.nove = ed.nove.filter(n => n.id !== i.id); else if (!ed.skryte.includes(i.id)) ed.skryte.push(i.id);
+        delete ed.polozky[i.id];
+      }, msg, `„${i.nazev}“ je odebrané.`);
+    });
+    f.addEventListener("submit", ev => {
+      ev.preventDefault();
+      commit(ed => {
+        const ch = (ed.polozky[i.id] ||= {});
+        if (isDoc) ch.plati_do = date.value || null; else ch.hotovo = doneCb.checked;
+        if (note.value.trim() !== (i.pozn || "")) ch.pozn = note.value.trim();
+      }, msg, isDoc && date.value ? `${i.nazev}: platí do ${fmtDate(date.value)}.` : `${i.nazev}: uloženo.`);
+    });
+    setTimeout(() => (date || note).focus(), 0);
+    return f;
+  }
+  function addButton(){
+    const btn = el("button", {type:"button", class:"btn", text:"Přidat doklad nebo úkol"});
+    const wrap = el("div", {class:"btns"}, btn);
+    btn.addEventListener("click", () => {
+      prepEditing = true;
+      const name = el("input", {type:"text", placeholder:"Název, např. Pas – partnerka", "aria-label":"Název", required:""});
+      const kind = el("select", {"aria-label":"Druh"}, el("option", {value:"platnost", text:"Doklad s platností"}),
+        el("option", {value:"ukol", text:"Úkol před cestou"}));
+      const date = el("input", {type:"date", "aria-label":"Platí do"});
+      const note = el("input", {type:"text", placeholder:"Poznámka (nepovinné)", "aria-label":"Poznámka"});
+      const msg = el("p", {class:"editmsg", role:"status"});
+      const cancel = el("button", {type:"button", class:"btn", text:"Zrušit"});
+      kind.addEventListener("change", () => { date.hidden = kind.value !== "platnost"; });
+      const f = el("form", {class:"editform"}, name, kind, date, note,
+        el("button", {type:"submit", class:"btn primary", text:"Přidat"}), cancel, msg);
+      cancel.addEventListener("click", () => { prepEditing = false; render(last); });
+      f.addEventListener("submit", ev => {
+        ev.preventDefault();
+        const n = {id: "w" + Date.now().toString(36), nazev: name.value.trim(), druh: kind.value};
+        if (!n.nazev) return;
+        if (n.druh === "platnost") n.plati_do = date.value || null; else n.hotovo = false;
+        if (note.value.trim()) n.pozn = note.value.trim();
+        commit(ed => { ed.nove.push(n); }, msg, `Přidáno: ${n.nazev}.`);
+      });
+      wrap.replaceWith(f);
+      name.focus();
+    });
+    return wrap;
+  }
+  function renderGh(s){
+    const gh = store.get("gh"), repo = repoOf(s);
+    const box = $("gh");
+    if (gh) {
+      const forget = el("button", {type:"button", class:"lnk", text:"Zapomenout token"});
+      forget.addEventListener("click", () => { store.del("gh"); renderGh(last); });
+      box.replaceChildren(el("p", null, `Data platnosti, hotové úkoly a vlastní položky si upravuješ přímo tady (tlačítko Upravit). `,
+        `Ukládají se zašifrovaně do repa ${repo || "na GitHubu"} a hlídač podle nich posílá připomínky. `, forget),
+        s._pending ? el("p", {class:"muted", text:"Poslední úpravu hlídač ještě nezpracoval – do té doby ji vidíš jen ty na tomhle zařízení."}) : null);
+      return;
+    }
+    const inp = el("input", {type:"password", placeholder:"github_pat_…", autocomplete:"off", "aria-label":"GitHub token"});
+    const msg = el("p", {class:"editmsg", role:"status"});
+    const f = el("form", {class:"editform"}, inp, el("button", {type:"submit", class:"btn primary", text:"Uložit token"}), msg);
+    f.addEventListener("submit", async ev => {
+      ev.preventDefault();
+      const t = inp.value.trim();
+      if (!/^(github_pat_|ghp_)/.test(t)) { msg.className = "editmsg err"; msg.textContent = "Tohle nevypadá jako GitHub token (začíná github_pat_)."; return; }
+      msg.className = "editmsg"; msg.textContent = "Ověřuji…";
+      try {
+        const r = await fetch(`https://api.github.com/repos/${repoOf(last)}`, {headers:{Authorization:`Bearer ${t}`, Accept:"application/vnd.github+json"}});
+        const j = r.ok ? await r.json() : null;
+        if (!j || !(j.permissions && j.permissions.push)) throw new Error(r.ok ? "gh403" : "gh" + r.status);
+        store.set("gh", t); renderGh(last);
+      } catch(e) { msg.className = "editmsg err"; msg.textContent = ghError(e); }
+    });
+    box.replaceChildren(
+      el("p", null, "Doklady a úkoly si můžeš upravovat přímo tady. Web je uloží zašifrovaně do tvého repa na GitHubu, k tomu potřebuje jednou GitHub token:"),
+      el("ol", {class:"steps"},
+        el("li", null, "Otevři ", el("a", {href:"https://github.com/settings/personal-access-tokens/new", target:"_blank", rel:"noopener", text:"nový Fine-grained token"}), "."),
+        el("li", {text:`Repository access: Only select repositories → ${repo ? repo.split("/")[1] : "krizovy-hlidac"}.`}),
+        el("li", {text:"Permissions → Repository permissions → Contents: Read and write. Nic dalšího."}),
+        el("li", {text:"Platnost klidně rok. Token zkopíruj a vlož sem."})),
+      f,
+      el("p", {class:"muted", text:"Token zůstane jen v tomhle prohlížeči. Kdo by měl odemčený telefon, mohl by s ním měnit repo hlídače – při ztrátě telefonu token na GitHubu smaž."}));
+  }
+
   function render(s){
     last = s;
+    s = withPending(s);
     const wasOpen = new Set([...document.querySelectorAll("details[data-k]")].filter(d => d.open).map(d => d.dataset.k));
     const openState = (d, key, def) => { d.dataset.k = key; d.open = rendered ? wasOpen.has(key) : def; return d; };
     const o = s.overall.level;
@@ -1119,6 +1355,7 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
     $("dot-sig").textContent = "";
 
     // ── PŘÍPRAVA ──
+    if (!prepEditing) {
     const docs = prepItems.filter(i => i.druh === "platnost" || (!i.druh && i.plati_do));
     const tasks = prepItems.filter(i => !docs.includes(i));
     const okN = prepItems.filter(i => i.stav === "ok" || i.stav === "volitelne").length;
@@ -1140,14 +1377,22 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       if (i.dni != null) li.append(gauge(Math.max(0, i.dni), 365, [{at:30, level:2}, {at:60, level:1}], {level: docLv(i)}));
       const info = [i.dni == null ? "" : i.dni < 0 ? `propadlé ${-i.dni} dní` : `platí ještě ${i.dni} dní`, i.pozn].filter(Boolean).join(". ");
       if (info || i.odkaz) li.append(withLink(el("span", {class:"info", text: info}), i));
+      li.append(editBar(i, li));
       return li;
     }));
     $("tasks").replaceChildren(...tasks.map(i => {
-      const icon = el("span", {class: `task${i.stav === "ok" ? " done" : ""}${i.stav === "volitelne" ? " opt" : ""}`, "aria-hidden":"true"});
+      const done = i.stav === "ok";
+      const icon = el("button", {type:"button", class: `task${done ? " done" : ""}${i.stav === "volitelne" ? " opt" : ""}`,
+        "aria-label": done ? `${i.nazev}: označit jako nevyřízené` : `${i.nazev}: označit jako hotové`, "aria-pressed": String(done)});
       const li = row(icon, i.nazev, i.stav_text, null);
       if (i.pozn || i.odkaz) li.append(withLink(el("span", {class:"info", text: i.pozn || ""}), i));
+      icon.addEventListener("click", () => commit(ed => { (ed.polozky[i.id] ||= {}).hotovo = !done; },
+        $("prep-note"), done ? `„${i.nazev}“ zase čeká na vyřízení.` : `„${i.nazev}“ je hotové.`));
+      li.append(editBar(i, li));
       return li;
     }));
+    $("prep-add").replaceChildren(addButton());
+    renderGh(s);
     const lists = s.seznamy || [];
     $("lists").replaceChildren(...lists.map(L => {
       const key = it => `chk:${L.id}:${it}`;
@@ -1167,6 +1412,7 @@ footer{padding:18px 0 28px;color:var(--muted);font-size:.85rem}
       return el("div", null, openState(el("details", null, el("summary", null, L.nazev, small), ul), `l:${L.id}`, false),
         el("div", {class:"prog", "aria-hidden":"true"}, bar));
     }));
+    }
     const dp = $("dot-prep");
     dp.hidden = !prepBad.length;
     dp.textContent = prepBad.length;

@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1494,6 +1495,71 @@ class TestEastSources(unittest.TestCase):
         self.assertIn("80 stanic", next(z["info"] for z in out["HU"]["zdroje"] if "Radiace" in z["nazev"]))
         m = hlidac.europe_map(CFG, {}, [], events)
         self.assertEqual(m["zeme"]["EE"]["level"], 1)
+
+
+class TestWebEdits(unittest.TestCase):
+    def cfg(self):
+        return {"pripravenost": {"varovat_dni": 60, "polozky": [
+            {"id": "op", "nazev": "Občanka", "plati_do": None},
+            {"id": "stk", "nazev": "STK", "plati_do": "2027-01-16", "pozn": "Audi"},
+            {"id": "critair", "nazev": "Crit'Air", "hotovo": False, "pozn": "Objednat"},
+            {"id": "vigneta", "nazev": "Dálniční známka", "hotovo": False, "volitelne": True}]}}
+
+    def test_apply_edits(self):
+        ed = {"v": 1, "upraveno": "2026-11-18T09:00:00Z",
+              "polozky": {"op": {"plati_do": "2030-05-20"}, "critair": {"hotovo": True},
+                          "stk": {"pozn": "Audi A6"}, "neni": {"plati_do": "2030-01-01"},
+                          "w1": {"plati_do": "2028-02-02"}},
+              "nove": [{"id": "w1", "nazev": "Pas", "druh": "platnost", "plati_do": "2026-12-01"},
+                       {"id": "w2", "nazev": "Koupit powerbanku", "druh": "ukol", "hotovo": False},
+                       {"id": "w3", "nazev": " "}],
+              "skryte": ["vigneta"]}
+        cfg = hlidac.apply_web_edits(self.cfg(), ed)
+        items = {i["id"]: i for i in hlidac.preparedness(cfg, NOW)}
+        self.assertEqual(set(items), {"op", "stk", "critair", "w1", "w2"})
+        self.assertEqual((items["op"]["plati_do"], items["op"]["stav"]), ("2030-05-20", "ok"))
+        self.assertEqual(items["critair"]["stav"], "ok")
+        self.assertEqual(items["critair"]["pozn"], "Objednat")              # poznámka zůstala
+        self.assertEqual(items["stk"]["pozn"], "Audi A6")
+        self.assertEqual((items["w1"]["plati_do"], items["w1"]["vlastni"]), ("2028-02-02", True))
+        self.assertEqual((items["w2"]["druh"], items["w2"]["stav"]), ("ukol", "nevyrizeno"))
+        self.assertEqual(cfg["_upravy"]["upraveno"], "2026-11-18T09:00:00Z")
+
+    def test_bad_values_ignored(self):
+        ed = {"polozky": {"op": {"plati_do": "zítra"}, "critair": {"plati_do": "2027-01-01"}, "stk": "x"},
+              "nove": [{"id": "w1", "nazev": "Pas", "druh": "platnost", "plati_do": "31. 12."}, "spatne"]}
+        cfg = hlidac.apply_web_edits(self.cfg(), ed)
+        items = {i["id"]: i for i in hlidac.preparedness(cfg, NOW)}
+        self.assertIsNone(items["op"]["plati_do"])
+        self.assertEqual(items["critair"]["druh"], "ukol")                  # úkol se nezmění na doklad
+        self.assertEqual(items["w1"]["stav"], "chybi_datum")
+
+    def test_load_config_reads_encrypted_edits(self):
+        import tempfile
+        d = Path(tempfile.mkdtemp())
+        edits = d / "upravy.enc.json"
+        edits.write_text(json.dumps(hlidac.encrypt_status({"polozky": {"op": {"plati_do": "2031-01-01"}}}, "kod")))
+        cfgp = d / "config.json"
+        cfgp.write_text(json.dumps(self.cfg()))
+        old = (hlidac.EDITS_PATH, hlidac.CONFIG_PATH, os.environ.get("DASH_TOKEN"), os.environ.get("CONFIG_JSON"))
+        try:
+            hlidac.EDITS_PATH, hlidac.CONFIG_PATH = edits, cfgp
+            os.environ["DASH_TOKEN"] = "kod"
+            os.environ.pop("CONFIG_JSON", None)
+            with mock.patch.object(hlidac, "ENC_CONFIG_PATH", d / "nic.json"):
+                cfg = hlidac.load_config()
+            self.assertEqual(cfg["pripravenost"]["polozky"][0]["plati_do"], "2031-01-01")
+            os.environ["DASH_TOKEN"] = "jiny"                              # špatný kód: úpravy se vynechají
+            with mock.patch.object(hlidac, "ENC_CONFIG_PATH", d / "nic.json"):
+                cfg = hlidac.load_config()
+            self.assertIsNone(cfg["pripravenost"]["polozky"][0]["plati_do"])
+        finally:
+            hlidac.EDITS_PATH, hlidac.CONFIG_PATH = old[0], old[1]
+            for k, v in (("DASH_TOKEN", old[2]), ("CONFIG_JSON", old[3])):
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
 if __name__ == "__main__":
     unittest.main()

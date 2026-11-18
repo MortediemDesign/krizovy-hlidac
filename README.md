@@ -78,6 +78,7 @@ Hlídač pošle zprávu i když nějaký zdroj nefunguje déle než 6 hodin a ka
 ## Připravenost
 
 - **`pripravenost.polozky`**: doklady a věci k vyřízení. Položka s `plati_do` (datum `2028-05-31`, `null` = chybí) se hlídá: připomínka přijde 60, 30 a 7 dní předem a v den konce (`upozornit_dni`). Položka s `hotovo: false` je úkol (Crit'Air, ZBE), `volitelne: true` = až bude potřeba. Nevyřízené věci se připomenou v nedělním „běžím“ a od stupně 🟠 i v upozornění („Než vyrazíš: …“).
+  - **Úpravy z webu**: v záložce Příprava má každá položka tlačítko *Upravit* (datum platnosti, hotovo, poznámka, odebrat), kroužek u úkolu přepne hotovo a dole jde přidat vlastní doklad nebo úkol. Web změny zašifruje kódem z odkazu (stejně jako stav) a přes GitHub API je uloží do `upravy.enc.json` v repu; push spustí hlídače, který je při načtení konfigurace přičte k `pripravenost` (mají přednost). Web k tomu jednou potřebuje Fine-grained token jen pro toto repo s oprávněním *Contents: Read and write* – zůstává jen v prohlížeči. Kdo upravuje `config.enc.json` ručně, má si nejdřív dešifrovat i `upravy.enc.json`, jinak ho úpravy z webu přebijí.
 - **Seznamy na 72 hodin** (nouzové zásoby, evakuační zavazadlo, dítě, auto, telefon) jsou v dashboardu k odškrtávání, zaškrtnutí si pamatuje telefon. Vlastní seznamy jdou nastavit v `seznamy`. Podklady: příručka 72 hodin Ministerstva vnitra.
 
 ## Úpravy konfigurace

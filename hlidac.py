@@ -166,6 +166,7 @@ def load_env_file():
 
 
 ENC_CONFIG_PATH = BASE / "config.enc.json"
+EDITS_PATH = BASE / "upravy.enc.json"          # úpravy přípravy z webu, šifrované stejně jako konfigurace
 _config_source_logged = None
 
 
@@ -192,6 +193,59 @@ def load_config() -> dict:
             os.environ[k] = str(v)
     if os.environ.get("DASHBOARD_URL"):          # adresa i s tokenem patří do .env/secretu, ne do configu
         cfg["dashboard_url"] = os.environ["DASHBOARD_URL"]
+    if EDITS_PATH.exists() and os.environ.get("DASH_TOKEN"):
+        try:
+            apply_web_edits(cfg, decrypt_blob(json.loads(EDITS_PATH.read_text(encoding="utf-8")), os.environ["DASH_TOKEN"]))
+        except Exception as e:
+            log(f"{EDITS_PATH.name} nejde použít ({type(e).__name__}) – úpravy z webu se vynechají")
+    return cfg
+
+
+def _valid_date(v):
+    if v in (None, ""):
+        return None
+    date.fromisoformat(str(v))          # ValueError → úprava se zahodí
+    return str(v)
+
+
+def apply_web_edits(cfg: dict, ed: dict) -> dict:
+    """Úpravy přípravy z webu (upravy.enc.json): data platnosti, splněné úkoly, poznámky, vlastní a skryté položky.
+    Mají přednost před konfigurací – web je zapisuje přímo do repa přes GitHub API."""
+    prep = cfg.setdefault("pripravenost", {})
+    items = [dict(p) for p in prep.get("polozky", [])]
+    pid = lambda p: p.get("id") or short_hash(p.get("nazev", ""))
+    by_id = {pid(p): p for p in items}
+    for n in ed.get("nove") or []:
+        if not isinstance(n, dict) or not n.get("id") or not str(n.get("nazev", "")).strip() or n["id"] in by_id:
+            continue
+        item = {"id": str(n["id"])[:40], "nazev": str(n["nazev"]).strip()[:120], "vlastni": True}
+        try:
+            if n.get("druh") == "platnost":
+                item["plati_do"] = _valid_date(n.get("plati_do"))
+            else:
+                item["hotovo"] = bool(n.get("hotovo"))
+        except ValueError:
+            item["plati_do"] = None
+        if n.get("pozn"):
+            item["pozn"] = str(n["pozn"])[:300]
+        items.append(item)
+        by_id[item["id"]] = item
+    for key, ch in (ed.get("polozky") or {}).items():
+        p = by_id.get(key)
+        if not p or not isinstance(ch, dict):
+            continue
+        try:
+            if "plati_do" in ch and "plati_do" in p:
+                p["plati_do"] = _valid_date(ch["plati_do"])
+        except ValueError:
+            pass
+        if "hotovo" in ch and "plati_do" not in p:
+            p["hotovo"] = bool(ch["hotovo"])
+        if "pozn" in ch:
+            p["pozn"] = str(ch["pozn"] or "")[:300]
+    hidden = set(ed.get("skryte") or [])
+    prep["polozky"] = [p for p in items if pid(p) not in hidden]
+    cfg["_upravy"] = {"upraveno": ed.get("upraveno"), "zmen": len(ed.get("polozky") or {}) + len(ed.get("nove") or [])}
     return cfg
 
 
@@ -2276,7 +2330,8 @@ def preparedness(cfg, now) -> list:
         out.append({"id": p.get("id") or short_hash(p.get("nazev", "")), "nazev": p.get("nazev", ""),
                     "druh": "platnost" if "plati_do" in p else "ukol",
                     "pozn": p.get("pozn", ""), "odkaz": p.get("odkaz", ""), "plati_do": p.get("plati_do"),
-                    "dni": days, "stav": st, "stav_text": PREP_LABEL[st]})
+                    "dni": days, "stav": st, "stav_text": PREP_LABEL[st], "vlastni": bool(p.get("vlastni")),
+                    "volitelne": bool(p.get("volitelne"))})
     return out
 
 
@@ -2772,6 +2827,9 @@ def build_status(cfg, state, events, region_levels, overall, now):
                      "vestniky": extras.get("vestniky") or {},
                      "anepc": extras.get("anepc") or {}, "seismo": extras.get("seismo_ib") or {}},
         "pripravenost": state.get("prep_items", []),
+        "upravy": {"repo": os.environ.get("GITHUB_REPOSITORY") or cfg.get("github_repo", ""),
+                   "soubor": EDITS_PATH.name, "upraveno": (cfg.get("_upravy") or {}).get("upraveno"),
+                   "varovat_dni": (cfg.get("pripravenost") or {}).get("varovat_dni", 60)},
         "seznamy": cfg.get("seznamy") or DEFAULT_CHECKLISTS,
         "history": list(reversed(state.get("history", [])))[:20],
         "channels": channels_configured(),
